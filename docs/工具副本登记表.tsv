@@ -1,0 +1,27 @@
+﻿工具	真身	副本	状态	说明
+eol_guard.py	本库 tools/	日常杂活/04_工具/eol_guard.py	双份·同源	2026-11-05 从日常杂活复制，只改了用法里的路径。**改一处必须改另一处**；按「通用件真身放通用库」，最终应以本库为准、日常杂活改指针（那本由别的会话维护，要赵哥点头才动）
+doc_lint.py	本库 tools/	日常杂活/04_工具/doc_lint.py	已分叉	本库版删掉 MOC 检查、上限按本库《文档落点表》。两边规则不同，属于两个库各自的体检，不能互相覆盖
+doc_split.py	本库 tools/	日常杂活 有同类脚本	重写	本库是重写的精简版，不是复制；接口一致（--threshold / --move / --to）
+subtitle_probe.py	本库 tools/	无	唯一	日常杂活已不保留
+align_bilingual.py	本库 tools/	无	唯一	—
+triage_diff.py	本库 tools/	无	唯一	—
+bilingual_pairs.py	本库 tools/	无	唯一	判卡直接 import align_bilingual 的 kind_of，别复制一份
+land_verify.py	本库 tools/	无	唯一	思路来自日常杂活 apply_nb_r.py，但结构重写：不绑剧名/目录，按条号+旧文本锚点
+style_normalize.py	本库 tools/	无	唯一	文件层样式规范化；旧库对应物是 s08_lint.py（绑剧、绑季、头部写死），本库重写为「基准文件 + 显式声明」两开关
+selftest.py	本库 tools/	无	唯一	本库专用回归集
+env_check.py	本库 tools/	无	唯一	本库专用
+accept.py	本库 tools/	无	唯一	11-06 新建；把散在各工序「完成标志」里的验收数字收成一条命令。验**成品结构**，不验 findings
+ass_pacing.py	本库 tools/	无	唯一	ASS 中文节奏统计，只出数不判红
+ass_rows.py	本库 tools/	无	唯一	ASS 行解析底座；`iter_rows` 被 mk_worksheet 等共用
+blind_sample.py	本库 tools/	无	唯一	盲测抽样。**本库跑不动**：要剧库提示词与 `02_工作区`（台账 `#26`）
+build_base.py	本库 tools/	无	唯一	11-06 新建；两份单语 SRT → 一份双语 ASS 底本
+check_slices.py	本库 tools/	无	唯一	分片自检四件：行数 / 顺序 / 不重叠 / 回顾段越界
+isolate_blind.py	本库 tools/	无	唯一	盲测隔离：题面拷到项目外，只给一个路径
+isolate_review.py	本库 tools/	无	唯一	隔离复核。**本库跑不动**：要 `p4_rubric.md` 与 `04_工具` 目录（台账 `#26`）
+mk_worksheet.py	本库 tools/	无	唯一	按行号区间切工作表，四列 `行号/时间码/中文/英文`
+prefilter_semantic.py	本库 tools/	无	唯一	语义候选预筛。**本库跑不动**：默认去 `02_工作区` 找候选，得显式 `--chunks`（台账 `#26`）
+scaffold.py	本库 tools/	无	唯一	11-07 建库骨架；`--with-skills` 带 4 份技能 + 判据型工序文档 + 命名准则
+split_by_tier.py	本库 tools/	无	唯一	复核后按档分流。参数签名已核，**未实跑**
+term_candidates.py	本库 tools/	无	唯一	11-05 新建；术语候选提取，只挑候选不给译法
+text_scan.py	本库 tools/	无	唯一	11-07 新建；文本层扫描 `MT1`–`MT4`
+validate_semantic.py	本库 tools/	无	唯一	语义审读 JSON → findings 结构。**本库跑不动**：默认在库根递归找该集 ass（台账 `#26`）

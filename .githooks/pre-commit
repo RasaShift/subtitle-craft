@@ -1,0 +1,61 @@
+#!/bin/sh
+# 提交前换行符守卫（2026-11-05 从 日常杂活 的钩子精简而来）
+#
+# 为什么只挂这一条：本库锁 LF（.gitattributes 写死 text=auto eol=lf）。
+# Python 文本模式写入会把 LF 转成 CRLF，git 记成整篇重写，下一次 diff 全是假变更。
+# 这类错不会报错，只能靠跑一下才发现。
+#
+# 换机器 / 重新克隆后要执行一次（core.hooksPath 是本机配置，不进版本库）：
+#   git config core.hooksPath .githooks
+#
+# 环境异常一律放行：守卫是辅助，不能把提交锁死。
+# 确需绕过：git commit --no-verify —— 绕过算明知故犯，事后补跑并说明原因。
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$ROOT" || exit 0
+
+EOL="tools/eol_guard.py"
+[ -f "$EOL" ] || { echo "[pre-commit] 找不到 $EOL，跳过"; exit 0; }
+
+PY=$(command -v python 2>/dev/null || command -v python3 2>/dev/null)
+[ -z "$PY" ] && { echo "[pre-commit] 没找到 python，提交放行"; exit 0; }
+
+# ---- 文档体检（2026-11-05 加）----
+# 只挡 ERROR：文档超上限、待办区留「已完成」。WARN 放行，自己判断。
+# 2026-11-07 去掉 -q：加了「接棒必读落后于台账」这条 WARN 之后，-q 会把它吞掉——
+# 它恰恰是提交这一刻最该看见的提醒（接棒必读和台账要同一次提交）。
+# 去掉 -q 只是多打印几行，退出码仍只由 ERROR 决定，不拦。
+LINT="tools/doc_lint.py"
+if [ -f "$LINT" ]; then
+    "$PY" "$LINT"
+    if [ $? -ne 0 ]; then
+        echo ""
+        echo "[pre-commit] 文档体检没过，提交已拦下。"
+        echo "  修法：python tools/doc_lint.py 看明细；超长用 python tools/doc_split.py 拆。"
+        exit 1
+    fi
+fi
+
+# -c core.quotepath=false 必须加：不加的话中文路径输出成 "\345\217..." 转义串，
+# 传给 eol_guard 就成了不存在的路径，检查静默失效。
+TMP="$ROOT/.git/pre-commit-staged.txt"
+git -c core.quotepath=false diff --cached --name-only --diff-filter=ACM >"$TMP" 2>/dev/null
+
+BAD=0
+while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    "$PY" "$EOL" --check "$f" >/dev/null 2>&1 || {
+        BAD=1
+        "$PY" "$EOL" --check "$f" 2>&1 | sed "s/^/  /"
+    }
+done <"$TMP"
+
+if [ $BAD -ne 0 ]; then
+    echo ""
+    echo "[pre-commit] 换行符被整篇改动，提交已拦下。"
+    echo "  修法：python tools/eol_guard.py --fix <上面那些文件>"
+    echo "  根因多半是文本模式写入；改文件用编辑工具，别用脚本整篇重写。"
+    exit 1
+fi
+
+exit 0

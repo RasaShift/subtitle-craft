@@ -1,0 +1,18 @@
+﻿[Script Info]
+ScriptType: v4.00+
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+Collisions: Normal
+PlayResX: 1920
+PlayResY: 1080
+Timer: 100.0000
+YCbCr Matrix: TV.709
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,更纱黑体 SC,86,&H00C4F3FF,&HF0000000,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,2,2,19,19,30,1
+Style: English,更纱黑体 SC,56,&H00C4F3FF,&HF0000000,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,4,2,2,19,19,30,1
+Style: Mark,更纱黑体 SC,75,&H00FFFFFF,&HF0000000,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,8,4,8,19,19,38,1
+
+[Events]
+Format: Layer, Start, End, Style, Actor, MarginL, MarginR, MarginV, Effect, Text

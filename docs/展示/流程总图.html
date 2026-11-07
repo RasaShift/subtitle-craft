@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>流程总图 · 字幕精校通用库</title>
+<style>
+  :root{
+    --bg:#f7f6f4;
+    --panel:#ffffff;
+    --ink:#1a1c1f;
+    --ink2:#565c64;
+    --ink3:#8b9098;
+    --line:#e4e1da;
+    --line2:#d2cec6;
+    --accent:#17405c;
+    --accent2:#2b6a8f;
+    --accent-bg:#eef4f8;
+    --warn:#9e3320;
+    --warn-bg:#fcf0ed;
+    --warn-line:#e8c4bc;
+    --code-bg:#f4f2ee;
+    --mono:"SF Mono","Cascadia Code",Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:15px;
+    line-height:1.72;
+    -webkit-font-smoothing:antialiased;
+  }
+  .layout{
+    display:grid;
+    grid-template-columns:236px minmax(0,1fr);
+    gap:0;
+    max-width:1280px;
+    margin:0 auto;
+  }
+
+  /* ---------- 侧栏 ---------- */
+  aside{
+    position:sticky;
+    top:0;
+    align-self:start;
+    height:100vh;
+    padding:38px 20px 38px 28px;
+    border-right:1px solid var(--line);
+    overflow-y:auto;
+  }
+  .side-title{
+    font-size:11px;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--ink3);
+    margin:0 0 14px;
+    font-weight:600;
+  }
+  aside nav a{
+    display:block;
+    padding:5px 10px;
+    margin:0 0 1px;
+    color:var(--ink2);
+    text-decoration:none;
+    font-size:13.5px;
+    border-left:2px solid transparent;
+    border-radius:0 4px 4px 0;
+    transition:color .12s,background .12s,border-color .12s;
+  }
+  aside nav a:hover{color:var(--accent);background:#f0efec}
+  aside nav a.on{color:var(--accent);border-left-color:var(--accent);background:var(--accent-bg);font-weight:600}
+  aside nav a .n{color:var(--ink3);font-family:var(--mono);font-size:11.5px;margin-right:7px}
+  aside nav a.on .n{color:var(--accent2)}
+  .side-foot{
+    margin-top:26px;
+    padding-top:16px;
+    border-top:1px solid var(--line);
+    font-size:11.5px;
+    color:var(--ink3);
+    line-height:1.6;
+  }
+
+  /* ---------- 主体 ---------- */
+  main{padding:38px 46px 100px 46px;min-width:0}
+
+  header.page{margin-bottom:30px}
+  .kicker{
+    font-size:11.5px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--accent2);
+    font-weight:600;
+    margin-bottom:9px;
+  }
+  h1{
+    font-size:29px;
+    line-height:1.25;
+    margin:0 0 10px;
+    letter-spacing:-.01em;
+    font-weight:700;
+  }
+  .lede{
+    font-size:15.5px;
+    color:var(--ink2);
+    margin:0 0 18px;
+    max-width:62ch;
+  }
+  .meta{
+    display:flex;
+    flex-wrap:wrap;
+    gap:0;
+    border-top:1px solid var(--line);
+    border-bottom:1px solid var(--line);
+    padding:9px 0;
+    font-size:12.5px;
+    color:var(--ink3);
+  }
+  .meta span{padding-right:18px;margin-right:18px;border-right:1px solid var(--line)}
+  .meta span:last-child{border-right:0;margin-right:0;padding-right:0}
+  .meta b{color:var(--ink2);font-weight:600}
+
+  /* 阅读说明 */
+  .notice{
+    background:var(--accent-bg);
+    border:1px solid #d7e3ec;
+    border-radius:9px;
+    padding:15px 18px;
+    margin:22px 0 0;
+    font-size:13.5px;
+    color:#2c4a5e;
+    line-height:1.7;
+  }
+  .notice p{margin:0 0 6px}
+  .notice p:last-child{margin:0}
+  .notice strong{color:var(--accent);font-weight:700}
+
+  /* 章节 */
+  section{margin:0 0 46px;scroll-margin-top:24px}
+  h2{
+    font-size:19.5px;
+    margin:0 0 6px;
+    font-weight:700;
+    letter-spacing:-.005em;
+    display:flex;
+    align-items:baseline;
+    gap:11px;
+  }
+  h2 .h-num{
+    font-family:var(--mono);
+    font-size:13px;
+    color:#fff;
+    background:var(--accent);
+    border-radius:5px;
+    padding:2px 7px;
+    font-weight:600;
+    letter-spacing:0;
+    transform:translateY(-1px);
+  }
+  .h-rule{
+    height:1px;
+    background:linear-gradient(to right,var(--line2),transparent);
+    margin:0 0 22px;
+  }
+  .sub{color:var(--ink2);font-size:14px;margin:0 0 20px;max-width:66ch}
+
+  /* ---------- 概览条 ---------- */
+  .flow-strip{
+    display:flex;
+    flex-wrap:wrap;
+    gap:7px;
+    margin:0 0 8px;
+  }
+  .flow-strip a{
+    display:flex;
+    align-items:center;
+    gap:7px;
+    background:var(--panel);
+    border:1px solid var(--line2);
+    border-radius:7px;
+    padding:7px 12px 7px 9px;
+    text-decoration:none;
+    color:var(--ink);
+    font-size:13px;
+    transition:border-color .12s,transform .12s,box-shadow .12s;
+  }
+  .flow-strip a:hover{border-color:var(--accent2);transform:translateY(-1px);box-shadow:0 3px 10px rgba(23,64,92,.08)}
+  .flow-strip .dot{
+    width:20px;height:20px;border-radius:50%;
+    background:var(--accent);color:#fff;
+    font-family:var(--mono);font-size:11px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;
+    flex:0 0 auto;
+  }
+  .flow-strip a.ghost{border-style:dashed;color:var(--ink3);background:transparent}
+  .flow-strip a.ghost .dot{background:#b9b5ad}
+  .flow-legend{
+    font-size:12.5px;color:var(--ink3);margin:10px 0 0;
+  }
+
+  /* ---------- 管线 ---------- */
+  .group-label{
+    display:flex;align-items:center;gap:12px;
+    margin:30px 0 16px;
+    font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--ink3);font-weight:600;
+  }
+  .group-label::after{content:"";flex:1;height:1px;background:var(--line)}
+  .group-label:first-child{margin-top:4px}
+
+  .pipe{position:relative;padding-left:46px}
+  .pipe::before{
+    content:"";position:absolute;left:15px;top:14px;bottom:26px;
+    width:1.5px;background:var(--line2);
+  }
+  .step{position:relative;margin:0 0 12px}
+  .step:last-child::before{content:"";position:absolute;left:-31px;bottom:-12px;width:1.5px;height:26px;background:var(--bg);z-index:1}
+  .step .node{
+    position:absolute;left:-46px;top:12px;
+    width:31px;height:31px;border-radius:50%;
+    background:var(--accent);color:#fff;
+    font-family:var(--mono);font-size:12.5px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;
+    border:3px solid var(--bg);
+    z-index:2;
+  }
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:9px;
+    padding:13px 16px 14px;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  .card:hover{border-color:var(--line2);box-shadow:0 4px 14px rgba(0,0,0,.045)}
+  .card-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:3px}
+  .card-head h3{margin:0;font-size:15.5px;font-weight:700}
+  .card-head .what{font-size:13px;color:var(--ink2)}
+  .io{display:flex;flex-wrap:wrap;gap:16px;margin-top:9px;font-size:12.5px;align-items:center}
+  .io .grp{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .io .k{color:var(--ink3);font-size:11.5px;letter-spacing:.05em}
+  .pill{
+    font-family:var(--mono);
+    font-size:11.5px;
+    padding:2px 8px;
+    border-radius:5px;
+    border:1px solid var(--line2);
+    background:var(--code-bg);
+    color:var(--ink2);
+    white-space:nowrap;
+  }
+  .pill.out{background:var(--accent-bg);border-color:#cddce7;color:var(--accent)}
+  .pill.text{font-family:inherit;font-size:12px}
+  .arrow{color:var(--ink3);font-size:12px}
+  .eater{
+    margin-top:8px;padding-top:9px;border-top:1px dashed var(--line);
+    font-size:12.5px;color:var(--ink2);
+  }
+  .eater b{color:var(--accent);font-weight:600}
+  .card.missing{border-style:dashed;background:#fbfaf8}
+  .card.missing .node{}
+  .step.missing .node{background:#b9b5ad}
+
+  /* ---------- 顺序卡 ---------- */
+  .order-list{display:flex;flex-direction:column;gap:9px}
+  .order{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:0;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:9px;
+    overflow:hidden;
+  }
+  .order .left{padding:13px 16px;border-right:1px solid var(--line)}
+  .order .right{padding:13px 16px;background:#fbfaf8}
+  .ord-title{
+    font-size:14.5px;font-weight:700;margin:0 0 5px;
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  }
+  .ord-title .seq{
+    font-family:var(--mono);font-size:11.5px;
+    background:var(--accent);color:#fff;
+    border-radius:4px;padding:1px 6px;font-weight:700;
+  }
+  .ord-why{font-size:13px;color:var(--ink2);margin:0;line-height:1.65}
+  .ord-right-label{
+    font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--warn);font-weight:600;margin:0 0 4px;
+  }
+  .ord-bad{font-size:13px;color:#6b3a2e;margin:0;line-height:1.65}
+  .quote{
+    margin-top:14px;
+    border-left:3px solid var(--accent2);
+    background:var(--accent-bg);
+    padding:11px 16px;
+    border-radius:0 7px 7px 0;
+    font-size:13.5px;
+    color:#274a60;
+  }
+  .quote strong{color:var(--accent)}
+
+  /* ---------- 断点 ---------- */
+  .breaks{display:flex;flex-direction:column;gap:10px}
+  .brk{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-left:3px solid var(--warn);
+    border-radius:7px;
+    padding:13px 16px;
+  }
+  .brk h4{margin:0 0 5px;font-size:14.5px;color:var(--warn);font-weight:700}
+  .brk p{margin:0 0 7px;font-size:13.5px;color:var(--ink2)}
+  .brk .ev{
+    font-size:12px;color:var(--ink3);
+    font-family:var(--mono);
+    background:var(--code-bg);
+    border:1px solid var(--line);
+    border-radius:5px;
+    padding:4px 9px;
+    display:inline-block;
+    line-height:1.5;
+  }
+  .brk .tag{
+    display:inline-block;font-size:11px;font-weight:700;
+    background:var(--warn-bg);color:var(--warn);
+    border:1px solid var(--warn-line);
+    border-radius:4px;padding:1px 7px;margin-left:8px;
+    vertical-align:1px;
+  }
+
+  /* ---------- 角色 ---------- */
+  .roles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .role{
+    background:var(--panel);border:1px solid var(--line);border-radius:9px;
+    padding:14px 16px;
+  }
+  .role .who{font-size:14px;font-weight:700;margin:0 0 6px;color:var(--accent)}
+  .role p{margin:0;font-size:13px;color:var(--ink2);line-height:1.65}
+
+  /* ---------- 代码 ---------- */
+  pre{
+    background:var(--code-bg);
+    border:1px solid var(--line);
+    border-radius:9px;
+    padding:15px 17px;
+    overflow-x:auto;
+    margin:0;
+    font-family:var(--mono);
+    font-size:12.4px;
+    line-height:1.85;
+    color:#2b2f35;
+  }
+  pre .cm{color:#8a8f96}
+  pre .cmd{color:var(--accent);font-weight:600}
+
+  /* ---------- 尾注 ---------- */
+  .foot{
+    border-top:1px solid var(--line);
+    padding-top:18px;
+    font-size:12.8px;
+    color:var(--ink3);
+    line-height:1.75;
+  }
+  .foot b{color:var(--ink2);font-weight:600}
+
+  @media (max-width:900px){
+    .layout{grid-template-columns:1fr}
+    aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);padding:22px 20px}
+    aside nav{display:flex;flex-wrap:wrap;gap:4px}
+    aside nav a{border-left:0;border-radius:5px;padding:4px 9px}
+    aside nav a.on{border-left:0}
+    main{padding:26px 20px 70px}
+    .order{grid-template-columns:1fr}
+    .order .left{border-right:0;border-bottom:1px solid var(--line)}
+    .roles{grid-template-columns:1fr}
+  }
+
+  /* ---------- 命名标记 ---------- */
+  .m{font-family:var(--mono);font-size:12.5px;color:var(--accent)}
+  .badge{
+    font-size:10.5px;font-weight:700;letter-spacing:.06em;
+    border:1px solid var(--line2);border-radius:4px;
+    padding:1px 6px;color:var(--ink3);background:var(--code-bg);
+    vertical-align:2px;
+  }
+  .badge.gx{color:var(--accent);border-color:#cddce7;background:var(--accent-bg)}
+
+  /* ---------- 定档岔路 ---------- */
+  .branch{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px}
+  .lane{
+    border:1px solid var(--line2);border-radius:7px;
+    padding:9px 13px 10px;background:#fbfaf8;
+  }
+  .lane b{display:block;font-size:12.8px;color:var(--accent);margin-bottom:3px;font-weight:700}
+  .lane span{display:block;font-size:12px;color:var(--ink2);line-height:1.6}
+  .lane.hot{border-color:var(--warn-line);background:var(--warn-bg)}
+  .lane.hot b{color:var(--warn)}
+  @media (max-width:900px){ .branch{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<aside>
+  <p class="side-title">目录</p>
+  <nav id="toc">
+    <a href="#s0"><span class="n">00</span>一句话</a>
+    <a href="#s1"><span class="n">01</span>十步与接口</a>
+    <a href="#s2"><span class="n">02</span>四条硬顺序</a>
+    <a href="#s3"><span class="n">03</span>现在断在哪</a>
+    <a href="#s4"><span class="n">04</span>谁触发、谁定案</a>
+    <a href="#s5"><span class="n">05</span>一集跑完的命令</a>
+    <a href="#s6"><span class="n">06</span>别把它当判据</a>
+  </nav>
+  <div class="side-foot">
+    源文件<br>
+    <span class="m" style="font-size:11px;color:var(--ink2)">docs/流程总图.md</span><br><br>
+    <strong>这份是手工同步的呈现版，没有生成工具</strong>——源件改了，这里要跟着改。2026-11-07 已经漂过一次，靠外部审计才抓出来。<br><br>
+    本页只装步骤顺序与接口，判据在各工序文档里，一处一份。<br><br>
+    命名规则见 <span class="m" style="font-size:11px;color:var(--ink2)">docs/命名准则.md</span>
+  </div>
+</aside>
+
+<main>
+
+<header class="page">
+  <div class="kicker">字幕精校通用库 · 工序骨架</div>
+  <h1>流程总图</h1>
+  <p class="lede">一份字幕从进来到能交，中间要过哪些手。这里只说<strong>顺序</strong>和<strong>谁产出、谁吃</strong>，不说怎么判。</p>
+  <div class="meta">
+    <span><b>十步</b>　备料 3 · 清稿 2 · 对稿 1 · 定档 1 · 审稿 1 · 落地 1 · 验收 1</span>
+    <span><b>三个工序</b>　清稿 / 对稿 / 审稿</span>
+    <span>2026-11-06</span>
+  </div>
+
+  <div class="notice">
+    <p><strong>这张图只装两件事</strong>：步骤顺序，和步骤之间「谁产出、谁吃」。</p>
+    <p>每一步怎么判，在 <span class="m">docs/工序-*.md</span>；这里不抄判据，只画接口。认工序看一个字：<strong>带「稿」的是工序</strong>（清稿 / 对稿 / 审稿，各有判据文档），<strong>不带的是步骤</strong>。这是 <span class="m">docs/命名准则.md</span> 第四节的判据，不用查表。</p>
+  </div>
+</header>
+
+<!-- ================= 00 ================= -->
+<section id="s0">
+  <h2><span class="h-num">00</span>一句话</h2>
+  <div class="h-rule"></div>
+  <p class="sub">一份字幕从进来到能交，走十步：<strong>三步备料、清稿两道、对稿一道、定档一道、审稿一道、落地写回、验收收口。</strong>
+  <br><strong>审稿读多深，由定档决定</strong>——这是全流程唯一一个岔路口。</p>
+
+  <div class="flow-strip">
+    <a href="#s1"><span class="dot">0</span>体检</a>
+    <a href="#s1"><span class="dot">1</span>对齐</a>
+    <a href="#s1"><span class="dot">2</span>攒词表</a>
+    <a href="#s1"><span class="dot">3</span>清稿·文件层</a>
+    <a href="#s1"><span class="dot">4</span>清稿·文本层</a>
+    <a href="#s1"><span class="dot">5</span>对稿</a>
+    <a href="#s1"><span class="dot">6</span>定档</a>
+    <a href="#s1"><span class="dot">7</span>审稿</a>
+    <a href="#s1"><span class="dot">8</span>落地</a>
+    <a href="#s1"><span class="dot">9</span>验收</a>
+  </div>
+  <p class="flow-legend">验收是第四道工序，有自己的一条命令（<code>tools/accept.py</code>）和判据文档，不是落地的附注。</p>
+</section>
+
+<!-- ================= 01 ================= -->
+<section id="s1">
+  <h2><span class="h-num">01</span>十步与接口</h2>
+  <div class="h-rule"></div>
+  <p class="sub">卡片右上角标 <span class="badge gx">工序</span> 的，是有判据文档的那四道（清稿 · 对稿 · 审稿 · 验收）；标 <span class="badge">步骤</span> 的只是流程节点。</p>
+
+  <div class="pipe">
+
+    <div class="group-label">料 · 备料</div>
+
+    <div class="step">
+      <div class="node">0</div>
+      <div class="card">
+        <div class="card-head"><h3>体检</h3><span class="badge">步骤</span><span class="what">摸清这份字幕能不能动</span></div>
+        <div class="io">
+          <span class="grp"><span class="k">吃</span><span class="pill text">字幕文件</span></span>
+          <span class="arrow">→</span>
+          <span class="grp"><span class="k">吐</span><span class="pill out">体检.tsv</span></span>
+        </div>
+        <div class="eater">→ <b>人</b>：坏块不为 0 就先修字幕，别往下走</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="node">1</div>
+      <div class="card">
+        <div class="card-head"><h3>对齐</h3><span class="badge">步骤</span><span class="what">中文当骨架，参照挂上去</span></div>
+        <div class="io">
+          <span class="grp"><span class="k">吃</span><span class="pill text">中 / 英（或双语轨）</span></span>
+          <span class="arrow">→</span>
+          <span class="grp"><span class="k">吐</span><span class="pill out">X.align.tsv</span></span>
+        </div>
+        <div class="eater">→ <b>对稿</b>（唯一入口）</div>
+        <div class="eater" style="color:var(--warn)">手上一份中英双语文件时，本步直接跳过：配对表到对稿前一起出，那时文件层的 --f6 已把中英拆开</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="node">2</div>
+      <div class="card">
+        <div class="card-head"><h3>攒词表</h3><span class="badge">步骤</span><span class="what">挑专名候选，人填译法</span></div>
+        <div class="io">
+          <span class="grp"><span class="k">吃</span><span class="pill text">字幕</span></span>
+          <span class="arrow">→</span>
+          <span class="grp"><span class="k">吐</span><span class="pill out">词表.tsv</span></span>
+        </div>
+        <div class="eater">→ <b>清稿 MT1</b>、<b>对稿 --term</b>、<b>审稿</b>（判术语）</div>
+      </div>
+    </div>
+
+    <div class="group-label">清 · 清稿两道</div>
+
+    <div class="step">
+      <div class="node">3</div>
+      <div class="card">
+        <div class="card-head"><h3>清稿 · 文件层</h3><span class="badge gx">工序</span><span class="what">编码 / 画布 / 样式表 / 字号统一到基准</span></div>
+        <div class="io">
+          <span class="grp"><span class="k">吃</span><span class="pill text">字幕</span><span class="pill out">样式基准</span></span>
+          <span class="arrow">→</span>
+          <span class="grp"><span class="k">吐</span><span class="pill out">统一后的字幕</span></span>
+        </div>
+        <div class="eater">→ <b>文本层</b>（拿它当对象）</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="node">4</div>
+      <div class="card">
+        <div class="card-head"><h3>清稿 · 文本层</h3><span class="badge gx">工序</span><span class="what">贴字、标签残留、译名错写</span></div>
+        <div class="io">
+          <span class="grp"><span class="k">吃</span><span class="pill text">上一步的字幕</span><span class="pill out">词表</span></span>
+          <span class="arrow">→</span>
+          <span class="grp"><span class="k">吐</span><span class="pill out">X.mech.tsv</span></span>
+        </div>
+        <div class="eater">→ <b>落地</b>（先单独落一次，见 02 第四条）</div>
+      </div>
+    </div>
+
+    <div class="group-label">对 · 对稿</div>
+
+    <div class="step">
+      <div class="node">5</div>
+      <div class="card">
+        <div class="card-head"><h3>对稿</h3><span class="badge gx">工序</span><span class="what">与参照对不上时，是缺、是错、还是说法不同</span></div>
+        <div class="io">
+          <span class="grp"><span class="k">吃</span><span class="pill out">X.align.tsv</span><span class="pill out">词表</span></span>
+          <span class="arrow">→</span>
+          <span class="grp"><span class="k">吐</span><span class="pill out">X.triage.tsv</span><span class="pill">T1 / T2 / T3 / T?</span></span>
+        </div>
+        <div class="eater">→ <b>人判案</b>；<strong>候选数还要喂定档</strong>（只单方向：多 → 判全量）。人划的错位区间要原样喂给审稿（跳过 ≠ 没问题）</div>
+      </div>
+    </div>
+
+    <div class="group-label">定 · 岔路口</div>
+
+    <div class="step">
+      <div class="node">6</div>
+      <div class="card">
+        <div class="card-head"><h3>定档</h3><span class="badge">步骤</span><span class="what">判这部剧要不要全量审、审多深（定的是<strong>审稿强度</strong>，不是上映档期）</span></div>
+        <div class="io">
+          <span class="grp"><span class="k">吃</span><span class="pill text">来源</span><span class="pill text">抽 40 条</span><span class="pill out">上一步候选数</span></span>
+          <span class="arrow">→</span>
+          <span class="grp"><span class="k">吐</span><span class="pill out">定档.md</span><span class="pill">来源 / 抽样 / 档位三行</span></span>
+        </div>
+
+        <div class="branch">
+          <div class="lane hot">
+            <b>来源差，或抽到 1 条硬伤 → 全量审稿</b>
+            <span>约 2.8 小时／集。机翻、无人校对的，直接进这一档，不抽样。</span>
+          </div>
+          <div class="lane">
+            <b>抽 40 条 0 硬伤 → 关键点核</b>
+            <span>约 20 分钟／集。只核否定、数字金额年代、既成事实、人物关系。</span>
+          </div>
+        </div>
+
+        <div class="eater">→ <b>审稿</b>（决定读多少）　<span style="color:var(--ink3)">抽样按前 / 中 / 后各 13–14 条，不许只抽开头</span></div>
+      </div>
+    </div>
+
+    <div class="group-label">审 · 按档执行</div>
+
+    <div class="step">
+      <div class="node">7</div>
+      <div class="card">
+        <div class="card-head"><h3>审稿</h3><span class="badge gx">工序</span><span class="what">字都对、话也通、意思偏了半格</span></div>
+        <div class="io">
+          <span class="grp"><span class="k">吃</span><span class="pill text">清稿后的字幕</span><span class="pill text">英文</span><span class="pill out">词表</span><span class="pill out">定档.md</span><span class="pill text">错位区间</span></span>
+          <span class="arrow">→</span>
+          <span class="grp"><span class="k">吐</span><span class="pill out">X.read.tsv</span></span>
+        </div>
+        <div class="eater">→ <b>落地</b>（与对稿定案并成一张后）　<span style="color:var(--ink3)">机判项为 0，全靠人／模型读</span></div>
+      </div>
+    </div>
+
+    <div class="group-label">落 · 收口</div>
+
+    <div class="step">
+      <div class="node">8</div>
+      <div class="card">
+        <div class="card-head"><h3>落地</h3><span class="badge">步骤</span><span class="what">按「条号 + 旧文本」写回，写完自己复算一遍</span></div>
+        <div class="io">
+          <span class="grp"><span class="k">吃</span><span class="pill text">字幕</span><span class="pill">两张清单</span></span>
+          <span class="arrow">→</span>
+          <span class="grp"><span class="k">吐</span><span class="pill out">成品</span><span class="pill out">复算报告</span></span>
+        </div>
+        <div class="eater">→ <b>验收</b>　<span style="color:var(--ink3)">（清稿一次；对稿定案 + 审稿清单并成一张再一次）</span></div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="node">9</div>
+      <div class="card">
+        <div class="card-head"><h3>验收</h3><span class="badge gx">工序</span><span class="what">该对的数字一次报全；有 ✗ 就停，别往下交付</span></div>
+        <div class="io">
+          <span class="grp"><span class="k">吃</span><span class="pill out">成品</span><span class="pill">两张清单</span><span class="pill">定档.md</span></span>
+        </div>
+        <div class="eater"><b>accept.py</b>　<span style="color:var(--ink3)">一条命令把该对的数字全报出来，有 ✗ 退出码 1。过不了不许交付</span></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ================= 02 ================= -->
+<section id="s2">
+  <h2><span class="h-num">02</span>四条硬顺序，各有各的理由</h2>
+  <div class="h-rule"></div>
+  <p class="sub">左边是理由，右边是违反了会怎样。四条都不是习惯，是实测出来的。</p>
+
+  <div class="order-list">
+
+    <div class="order">
+      <div class="left">
+        <p class="ord-title"><span class="seq">1</span>文件层 → 文本层</p>
+        <p class="ord-why">文件层重写整行但不动文本，跑完文本锚点仍有效。</p>
+      </div>
+      <div class="right">
+        <p class="ord-right-label">违反了</p>
+        <p class="ord-bad">反过来做，样式器还得把文本原样保住再对一遍账。</p>
+      </div>
+    </div>
+
+    <div class="order">
+      <div class="left">
+        <p class="ord-title"><span class="seq">2</span>清稿 → 对稿</p>
+        <p class="ord-why">脏输入（粘连、贴字）会让对稿假红成倍。</p>
+      </div>
+      <div class="right">
+        <p class="ord-right-label">违反了</p>
+        <p class="ord-bad">假信号淹掉真问题，人力全耗在噪声上。</p>
+      </div>
+    </div>
+
+    <div class="order">
+      <div class="left">
+        <p class="ord-title"><span class="seq">3</span>对稿 → 定档 → 审稿</p>
+        <p class="ord-why">定档要读干净文本（清稿后）、要一个全量负证据（对稿候选数）；审稿要跳过「中英对照本身错位」的那几行，还要先按词表把术语定稿。</p>
+      </div>
+      <div class="right">
+        <p class="ord-right-label">违反了</p>
+        <p class="ord-bad">清稿前抽样，会把「译名不统一」误读成「翻译差」，白读一批；读错位的行必然误判。</p>
+      </div>
+    </div>
+
+    <div class="order">
+      <div class="left">
+        <p class="ord-title"><span class="seq">4</span>清稿先落 → 其余并成一张再落</p>
+        <p class="ord-why">对稿要吃干净输入，所以清稿必须单独先落盘；但落盘之后不能再回头改清稿。</p>
+      </div>
+      <div class="right">
+        <p class="ord-right-label">违反了</p>
+        <p class="ord-bad">后一行静默覆盖前一行，复算仍全绿（已实测，<span class="m">land_verify</span> 现在直接拒，退出码 2）。</p>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="quote">
+    <strong>「清稿一次、其余一次」是硬要求，不是习惯。</strong>清稿单独落盘后，对稿定案的改动与审稿清单必须并成一张、落一次——落两次之间没有复算，错了看不出来；同一条在清单里只许出现一行。
+    <br><br>
+    <strong>还有一条会悄悄过期</strong>：对稿只读配对表、不读字幕。清稿改过中文后，表里那列就是旧值，所以清稿落地后必须<strong>重建一次配对表</strong>再跑对稿。
+  </div>
+</section>
+
+<!-- ================= 03 ================= -->
+<section id="s3">
+  <h2><span class="h-num">03</span>现在断在哪、哪里会悄悄过期</h2>
+  <div class="h-rule"></div>
+  <p class="sub">两处。前一条靠流程硬约束，后一条是工具缺口。（错位区间与 <span class="m">stage</span> 已在 11-06 补上）</p>
+
+  <div class="breaks">
+
+    <div class="brk">
+      <h4>配对表会过期，没人会收到提醒<span class="tag">静默</span></h4>
+      <p>对稿只读配对表、不读字幕（脚本只认「中文条号 / 中文文本 / 英文文本」三列）。清稿改过中文后，表里那列就是旧值，对稿照着旧文本出候选 → 落地锚点失配。</p>
+      <p style="color:var(--ink);font-size:13px">做法：清稿落地后<strong>重建一次配对表</strong>再跑对稿。不做的话验收会以「跳过非 0」暴露，但那已经是白跑一轮。</p>
+      <span class="ev">triage_diff.py:59</span>
+    </div>
+
+    <div class="brk">
+      <h4>关键点核没有预筛工具<span class="tag">工具缺</span></h4>
+      <p>否定词、数字、人名这三类机器挑得出来，现在得人自己翻——「关键点核」这一档的省时优势因此打了折。</p>
+      <span class="ev">台账第 12 条</span>
+    </div>
+
+  </div>
+
+  <p style="margin-top:16px;font-size:13px;color:var(--ink2)">前两条要改对稿文档，但它现在是 <strong>130 / 130 行顶格</strong>——加字段之前得先拆，不能硬塞。</p>
+</section>
+
+<!-- ================= 04 ================= -->
+<section id="s4">
+  <h2><span class="h-num">04</span>谁触发、谁定案</h2>
+  <div class="h-rule"></div>
+
+  <div class="roles">
+    <div class="role">
+      <p class="who">统筹方</p>
+      <p>决定这一步跑不跑、什么时候跑。清稿、对稿、定档、审稿都由它触发。</p>
+    </div>
+    <div class="role">
+      <p class="who">机器</p>
+      <p>只挑候选、只算数值、只做替换。<strong>一句判断都不下</strong>——审稿那道机判项为 0。</p>
+    </div>
+    <div class="role">
+      <p class="who">人</p>
+      <p>定案。对稿的 <span class="m">T?</span>、定档的档位、审稿的全部条目、词表的译法，都得人过。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 05 ================= -->
+<section id="s5">
+  <h2><span class="h-num">05</span>一集跑完，命令长这样</h2>
+  <div class="h-rule"></div>
+
+<pre><span class="cmd">python tools/subtitle_probe.py</span> 01_源字幕 --tsv 02_工作区/体检.tsv
+<span class="cm"># 起点只有两份单语 SRT、还没有成品 ASS 的剧：先造底本（已有成品 ASS 的剧跳过这步）</span>
+<span class="cmd">python tools/build_base.py</span> 01_源字幕/X.简.srt 01_源字幕/X.英.srt -o 02_工作区/X.base.ass --style-from 参照.ass
+<span class="cmd">python tools/align_bilingual.py</span> 01_源字幕/X.简.srt 01_源字幕/X.英.srt --tsv 02_工作区/X.align.tsv
+<span class="cmd">python tools/term_candidates.py</span> 01_源字幕 --min 2 --tsv 02_工作区/词表候选.tsv   <span class="cm"># 人填成 词表.tsv</span>
+<span class="cmd">python tools/style_normalize.py check</span>  &lt;字幕.ass&gt; --video 1920x1080 --base 基准.ass
+<span class="cmd">python tools/style_normalize.py apply</span>  &lt;字幕.ass&gt; --base 基准.ass -o 02_工作区/X.styled.ass
+<span class="cm"># 文本层：先扫（只做唯一改法），命中的出清单；挡住的进「需人判」表，人看过再自己加行</span>
+<span class="cmd">python tools/text_scan.py</span> 02_工作区/X.styled.ass --term 词表.tsv --tsv 02_工作区/X.mech.tsv --report 02_工作区/X.需人判.tsv
+<span class="cmd">python tools/land_verify.py apply</span>  02_工作区/X.styled.ass 02_工作区/X.mech.tsv -o 02_工作区/X.mech.ass
+<span class="cm"># 清稿改过中文了 → 配对表必须重建一次（对稿只读表、不读字幕）：</span>
+<span class="cmd">python tools/bilingual_pairs.py</span> 02_工作区/X.mech.ass --tsv 02_工作区/X.align2.tsv
+<span class="cmd">python tools/triage_diff.py</span> 02_工作区/X.align2.tsv --term 词表.tsv --offset 02_工作区/X.offset.tsv --tsv 02_工作区/X.triage.tsv
+<span class="cm"># 错位区间表是人划的（三列：起条号 / 止条号 / 理由）；没划就不给这个参数</span>
+<span class="cm"># 定档：人读来源 + 抽 40 条（前 / 中 / 后各 13–14），看 X.triage.tsv 候选数，写 定档.md 三行</span>
+<span class="cm"># 审稿：无工具；档位 = 全量则逐条读，= 关键点则只核否定 / 数字 / 既成事实 / 人物关系</span>
+<span class="cm"># 落地：先并成一张，再一次写回（整句漏译要补行，另给一张 X.ins.tsv）</span>
+<span class="cmd">python tools/land_verify.py apply</span>  02_工作区/X.mech.ass 02_工作区/X.all.tsv --inserts 02_工作区/X.ins.tsv -o 03_成品/X.ass
+<span class="cmd">python tools/land_verify.py verify</span> 02_工作区/X.mech.ass 03_成品/X.ass 02_工作区/X.all.tsv --inserts 02_工作区/X.ins.tsv
+<span class="cm"># 验收：一条命令把该对的数字报全，有 ✗ 就退出码 1</span>
+<span class="cmd">python tools/accept.py</span> 02_工作区/X.mech.ass 03_成品/X.ass --changes 02_工作区/X.all.tsv --inserts 02_工作区/X.ins.tsv --stage 02_工作区/定档.md
+<span class="cm"># 补行表六列 start / end / cn / en / after_no / style。插在哪由 start 算，after_no 只核对</span></pre>
+</section>
+
+<!-- ================= 06 ================= -->
+<section id="s6">
+  <h2><span class="h-num">06</span>别把这张图当判据</h2>
+  <div class="h-rule"></div>
+  <p class="sub">判据在各工序文档里，一处只有一份。这张图更新只在<strong>步骤增减</strong>或<strong>接口变了</strong>的时候——判据改了不用动它。</p>
+
+  <div class="foot">
+    <b>对应关系</b><br>
+    清稿（文件层 / 文本层）→ <span class="m" style="font-size:12px">docs/工序-清稿.md</span>（明细 <span class="m" style="font-size:12px">docs/工序-清稿-规则清单.md</span>，编号 <span class="m" style="font-size:12px">MF1–MF8</span> / <span class="m" style="font-size:12px">MT1–MT6</span>）<br>
+    对稿 → <span class="m" style="font-size:12px">docs/工序-对稿.md</span>（机器规则 <span class="m" style="font-size:12px">DR0–DR5</span>，结论 <span class="m" style="font-size:12px">T1/T2/T3/T?</span>）<br>
+    定档 + 审稿 → <span class="m" style="font-size:12px">docs/工序-审稿.md</span>（定档是第 2 节；条目与形态在 <span class="m" style="font-size:12px">docs/工序-审稿-判据.md</span>）<br>
+    命名规则 → <span class="m" style="font-size:12px">docs/命名准则.md</span>　新手照做 → <span class="m" style="font-size:12px">examples/新剧接入.md</span>（它多三步准备，步号比本图大 3）
+  </div>
+</section>
+
+</main>
+</div>
+
+<script>
+(function(){
+  var links = Array.prototype.slice.call(document.querySelectorAll('#toc a'));
+  var targets = links.map(function(a){ return document.querySelector(a.getAttribute('href')); });
+  function sync(){
+    var y = window.scrollY + 90, cur = 0;
+    for (var i = 0; i < targets.length; i++){
+      if (targets[i] && targets[i].offsetTop <= y) cur = i;
+    }
+    links.forEach(function(a, i){ a.classList.toggle('on', i === cur); });
+  }
+  window.addEventListener('scroll', sync, {passive:true});
+  window.addEventListener('resize', sync);
+  sync();
+})();
+</script>
+</body>
+</html>

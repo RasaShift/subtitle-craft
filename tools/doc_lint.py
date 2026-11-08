@@ -319,10 +319,13 @@ def check_handoff_doc() -> list:
         return out
 
     # ① 改了还没提交：接棒必读多半也要跟，提交前一起看一眼
-    # 先刷一次索引：刚 commit 完立刻跑，stat 缓存还没更新，会把已提交的文件报成「有未提交」——
-    # 误报一次就够让人不信这条检查了（2026-11-08 连撞两次）。
+    # 先刷一次索引：刚 commit 完立刻跑，stat 缓存还没更新，会把已提交的文件报成「有未提交」。
+    # 光 refresh 不够——`--refresh` 返回后第一把 status 仍可能读到旧缓存（2026-11-08 第三次撞上）。
+    # 所以判「连续两次都脏」才报：真改了文件，两次都会脏；只是缓存没跟上，第二次就干净了。
+    # 宁可漏报一次缓存边界，也不要给一条假 WARN——假报一次，这条检查就没人看了。
     _git('update-index', '-q', '--refresh')
-    if _git('status', '--porcelain', '--', *FOLLOWERS):
+    dirty = _git('status', '--porcelain', '--', *FOLLOWERS)
+    if dirty and _git('status', '--porcelain', '--', *FOLLOWERS):
         out.append(('WARN', '台账 / 判定记录有未提交的改动——提交前确认接棒必读跟上了'
                             '（同一件事一次提交，别分两笔）'))
 

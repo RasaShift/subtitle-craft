@@ -44,6 +44,9 @@ LIMITS = {
     '接棒必读.md':   {'lines': 60,  'entry': 0},
     '流程总图.md':   {'lines': 100, 'entry': 0},   # 清单型：步骤与接口，长了是步骤多了
     '命名准则.md':   {'lines': 60,  'entry': 0},   # 规则型：只放骨架，例子在各自文档
+    # 2026-11-08 加：答复表与流水都会长，靠「关闭即归档 + 只留 5 轮」维持；
+    # 超 200 说明归档没做，不是文档写长了。
+    '协作协议.md':  {'lines': 200, 'entry': 0},
 }
 GONGXU_LIMIT = 130      # 工序主干（工序-<名>.md）：判据型，超了说明判据在堆，该拆成两道工序
 GONGXU_LIST_LIMIT = 200 # 工序分片（工序-<名>-<后缀>.md）：清单型，一条一行，长的是必要信息
@@ -421,6 +424,33 @@ def check_memory(root: Path = None) -> list:
     return out
 
 
+
+ARCHIVE_LIMIT = 200     # 归档每份上限（2026-11-08）
+
+
+def check_archive(root: Path = None) -> list:
+    """归档目录也要有上限（2026-11-08 加）。
+
+    原先进了 archive 就"安全"了：落点表写着每份 ≤200，但没人查——`已完成_202611.md`
+    长到 219 行、`doc_lint` 一直绿。**归档是只增型，没有闸就会一直长**，
+    而它长的正是最不该读的那部分（旧内容）。
+
+    例外：判定记录卷不设限——它是账本，拆卷不拆内容（落点表原话）。
+    """
+    out = []
+    d = (root or ROOT) / 'docs' / 'archive'
+    if not d.is_dir():
+        return out
+    for p in sorted(d.glob('*.md')):
+        if p.name.startswith('判定记录_'):
+            continue
+        n = len(p.read_text(encoding='utf-8', errors='replace').splitlines())
+        if n > ARCHIVE_LIMIT:
+            out.append(('ERROR', f'archive/{p.name} {n} 行，超 {ARCHIVE_LIMIT}——'
+                                 f'归档只增型，满了开新卷（`-2` / `-3`），别往里硬塞'))
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('-q', '--quiet', action='store_true', help='只报 ERROR')
@@ -486,6 +516,7 @@ def main() -> int:
     issues += check_taizhang_note()
     issues += check_skill_scripts()
     issues += check_memory()
+    issues += check_archive()
 
     err = [x for x in issues if x[0] == 'ERROR']
     warn = [x for x in issues if x[0] == 'WARN']

@@ -424,13 +424,27 @@ def check_memory(root: Path = None) -> list:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('-q', '--quiet', action='store_true', help='只报 ERROR')
+    ap.add_argument('--docs', metavar='DIR',
+                    help='文档目录（默认 <库根>/docs）。老库的文档不叫 docs 时用它指过去：'
+                         'ROOT 按脚本位置取，脚本放进 <库>/04_工具/ 之类就自动指库根，'
+                         '但文档目录叫 docs 还是 06_治理，脚本猜不出来')
     a = ap.parse_args()
+
+    # 2026-11-08 加。为什么不是 --root：ROOT 由脚本位置决定，装进老库的任意子目录都对，
+    # 真正会错的是 DOCS 这一级——老库把文档放 `06_治理/`、不叫 `docs/`，于是每项都报
+    # 「找不到 docs/X（跳过）」，全绿但一个字没查。--root 解决不了这个，只能 --docs。
+    if a.docs:
+        d = Path(a.docs)
+        if not d.is_dir():
+            print(f'[ERROR] --docs 指的目录不存在：{d.resolve()}')
+            return 2
+        globals()['DOCS'] = d.resolve()
 
     issues = []
     for name, cfg in LIMITS.items():
         p = DOCS / name
         if not p.is_file():
-            issues.append(('WARN', f'找不到 docs/{name}（跳过）'))
+            issues.append(('WARN', f'找不到 {DOCS.name}/{name}（跳过）'))
             continue
         try:
             if cfg.get('lines'):      # 账本不设总量上限，条目里就没有这个键

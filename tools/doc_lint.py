@@ -307,6 +307,9 @@ def check_handoff_doc() -> list:
         return out
 
     # ① 改了还没提交：接棒必读多半也要跟，提交前一起看一眼
+    # 先刷一次索引：刚 commit 完立刻跑，stat 缓存还没更新，会把已提交的文件报成「有未提交」——
+    # 误报一次就够让人不信这条检查了（2026-11-08 连撞两次）。
+    _git('update-index', '-q', '--refresh')
     if _git('status', '--porcelain', '--', *FOLLOWERS):
         out.append(('WARN', '台账 / 判定记录有未提交的改动——提交前确认接棒必读跟上了'
                             '（同一件事一次提交，别分两笔）'))

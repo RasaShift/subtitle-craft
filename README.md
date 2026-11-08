@@ -49,10 +49,11 @@ Built from real runs on two series (116 + 38 episodes). **No episode data, term 
 | `tools/land_verify.py` | 可用（补行 2026-11-06 已落） | 落地：按「条号 + 旧文本」双锚点写回，再逐条复算——证明只改了该改的，没多改。**补行**另给一张表，插在哪由时间算、`after_no` 只核对 |
 | `tools/style_normalize.py` | 可用（v1：做 `MF1`–`MF6` 与引用断言，`MF8` 只报不改；`MF6` 要显式 `--f6`） | 文件层样式规范化：头部与样式表换基准，坐标/字号按画布比例换算；`0×0` 与旧样式改名都要显式声明，不许猜。样式三套可选（含字号、颜色、描边、边距），见 `examples/样式预设/`（带样张）；`base` 子命令按片源比例从它换算出别的比例（4:3 老剧用） |
 | `tools/term_candidates.py` | 可用 | 术语/专名候选提取：**只挑候选不给译法**。屏幕打前 40 条（候选 / 次数 / 首现 / 型 / 中文片段）；`--tsv` 写出的底稿是 7 列，后三列 `规定译法 / 已见错写法 / 备注` 留空交人填 |
+| `tools/findings2tsv.py` | 可用 | findings JSON → 改动表：`ln/cn/cn_new/source_model/evidence` 纯映射，不做合并、不做判断。补上「审稿产出到落地之间」那段断链——原先靠人对照合并，`evidence` 必然整段丢 |
 | `tools/accept.py` | 可用 | 验收：一条命令报出该对的全部数字（条数 / 对白行 / 非对白行变化 / BOM / 改动 / 补行位置 / 落盘密度 / 定档痕迹），有 ✗ 退出码 1 |
 | `tools/build_base.py` | 可用 | 底本合成：两份单语 SRT → 一份双语 ASS（配对调对齐器、样式可抄现成成品，画布按轴换到 `--video`）。起点没有 ASS 的剧用它 |
 
-**一共 28 件工具，其中 24 件能独立跑**：上表 10 件主用，另有 6 件工程件、12 件审稿辅助；**4 件（`blind_sample` / `isolate_review` / `prefilter_semantic` / `validate_semantic`）要剧库目录结构才跑得动**，对外按 24 件算。四道工序齐（清稿 · 对稿 · 审稿 · 验收）、文档骨架可复制（`tools/scaffold.py` + `examples/新库骨架/`，建完当场自检）。
+**一共 29 件工具，其中 25 件能独立跑**：上表 11 件主用，另有 6 件工程件、12 件审稿辅助；**4 件（`blind_sample` / `isolate_review` / `prefilter_semantic` / `validate_semantic`）要剧库目录结构才跑得动**，对外按 25 件算。四道工序齐（清稿 · 对稿 · 审稿 · 验收）、文档骨架可复制（`tools/scaffold.py` + `examples/新库骨架/`，建完当场自检）。
 **还差的**是**换一部剧**走完整链：已有两集在《嗜血法医》上跑完 0–8 步，其中一集（2026-11-08）连**定档 · 审稿 · 验收**三道人判工序也走通了（只落 C1 一层，不是全量）；《是，大臣》那一集跑到验收——**定档做了，审稿只抽读 40 条（约 7%），不是全量**。**整链目前只在一部剧上走通过**，工具则在两部剧都跑过——你接新剧，仍会是第一个在陌生素材形态上走全程的人。
 
 ## 用法
@@ -75,7 +76,7 @@ python tools/term_candidates.py <字幕或目录> [--min 2] [--tsv 输出.tsv]
 python tools/accept.py <改前> <改后> [--changes 改动.tsv] [--inserts 补行.tsv] [--stage 定档.md]
 python tools/build_base.py <中文.srt> <英文.srt> -o <底本.ass> [--style-from 参照.ass] [--video 1920x1080]
 
-python tools/selftest.py      # 全部工具的函数级回归（220 项），改完代码先跑这个
+python tools/selftest.py      # 全部工具的函数级回归（244 项），改完代码先跑这个
 python tools/doc_lint.py      # 文档体检；想让它提交时自动跑，先 git config core.hooksPath .githooks
 python tools/env_check.py     # 换机器/隔很久回来，先跑这个
 python tools/scaffold.py <目录>   # 把文档骨架展开成一个新库，建完当场跑一次体检

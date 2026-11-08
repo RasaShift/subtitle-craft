@@ -26,6 +26,7 @@
 原样交给人看——静默丢弃比漏判贵。
 """
 import argparse
+import datetime
 import pathlib
 import re
 import sys
@@ -116,7 +117,18 @@ def pairs_of(path):
 
 
 HEAD = ['中文条号', '中文开始', '中文结束', '中文文本', '英文条号', '英文开始',
-        '英文结束', '英文文本', '置信度', '标记']
+        '英文结束', '英文文本', '置信度', '标记', '来源']
+
+
+def stamp(p):
+    """来源标记：文件名 @ 改到的时间。
+
+    为什么要它（2026-11-08）：清稿改完中文后，旧配对表条数与列名都不变，
+    肉眼分不出是哪一版建的——拿去落地就是锚点失配。剧库实测 538 条里
+    132 条中文与清稿后不同，全部来自清稿前的 SRT。
+    """
+    t = datetime.datetime.fromtimestamp(p.stat().st_mtime).strftime('%Y-%m-%dT%H:%M')
+    return f'{p.name}@{t}'
 
 
 def flag_of(r, head_window, tail_window):
@@ -131,7 +143,7 @@ def flag_of(r, head_window, tail_window):
     return kind_of({'text': r['zh_raw'], 's': r['s'], 'e': r['e']}, head_window, tail_window)
 
 
-def write(path, rows):
+def write(path, rows, source=''):
     path.parent.mkdir(parents=True, exist_ok=True)
     tail = max((r['e'] for r in rows), default=0) - TAIL_WINDOW * 1000
     with open(path, 'w', encoding='utf-8-sig', newline='\n') as f:
@@ -142,7 +154,8 @@ def write(path, rows):
                 str(i), ms2tc(r['s']), ms2tc(r['e']), r['zh'],
                 str(i) if has_en else '', ms2tc(r['s']) if has_en else '',
                 ms2tc(r['e']) if has_en else '', r['en'],
-                '1.00' if has_en else '', flag_of(r, HEAD_WINDOW * 1000, tail)]) + '\n')
+                '1.00' if has_en else '', flag_of(r, HEAD_WINDOW * 1000, tail),
+                source]) + '\n')
 
 
 def main():
@@ -159,14 +172,14 @@ def main():
             sys.exit(f'{src} 下没有 .ass / .srt')
         for p in files:
             rows = pairs_of(p)
-            write(dst / (p.stem + '.pairs.tsv'), rows)
+            write(dst / (p.stem + '.pairs.tsv'), rows, stamp(p))
             print(f'{p.name}: {len(rows)} 条，有英文 {sum(1 for r in rows if r["en"])}')
         return
 
     rows = pairs_of(src)
     if not rows:
         sys.exit(f'没解析出任何一条：{src}')
-    write(dst, rows)
+    write(dst, rows, stamp(src))
     n_en = sum(1 for r in rows if r['en'])
     print(f'{src.name}: 共 {len(rows)} 条，有英文 {n_en}')
     print(f'  配对表：{dst}')

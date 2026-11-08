@@ -149,6 +149,14 @@ def main() -> int:
     keep = memory / '.gitkeep'
     if not keep.exists():
         keep.write_text('', encoding='utf-8')
+    # 三层目录：`examples/新剧接入.md:21` 定了这个结构，成品与中间件不能混在一起。
+    # 2026-11-08 加（剧库报的 GQ-9：建完没有成品层，finalB2.ass 和 mech/mech2 同目录）。
+    for sub in ('01_源字幕', '02_工作区', '03_成品'):
+        d = dst / sub
+        d.mkdir(parents=True, exist_ok=True)
+        k = d / '.gitkeep'
+        if not k.exists():
+            k.write_text('', encoding='utf-8')
 
     made1, skip1 = copy_skeleton(dst, name, date, a.force)
     made2, skip2 = copy_tools(dst, a.force)
@@ -173,12 +181,14 @@ def main() -> int:
     tail = out.strip().split('\n')[-1]
     print(f'自检文档体检：{"过" if r.returncode == 0 else "不过"}  {tail}')
 
-    # 骨架自带的六份缺一份就是模板坏了，别当预期 WARN 混过去
-    must = ('接棒必读.md', '待办台账.md', '待办台账-详情.md', '判定记录.md', '文档落点表.md',
-            '进度台账.md')
-    broken = [n for n in must if f'找不到 docs/{n}' in out]
-    if broken:
-        print(f'  [真问题] 骨架自带的这几份没建出来：{" / ".join(broken)}')
+    # 骨架自带的每一份，缺一份就是模板坏了，别当预期 WARN 混过去。
+    # 2026-11-08 改成直接查磁盘：原写法靠 doc_lint 输出「找不到 docs/X」来判，只覆盖
+    # `LIMITS` 里那几份 md——`卡点.tsv`、`.gitattributes` 这类根本不在它的检查范围，
+    # 缺了照样绿。现在按骨架目录逐份核，模板里放什么就核什么。
+    missing = [p.relative_to(SKELETON).as_posix() for p in sorted(SKELETON.rglob('*'))
+               if p.is_file() and not (dst / p.relative_to(SKELETON)).exists()]
+    if missing:
+        print(f'  [真问题] 骨架文件没建出来：{" / ".join(missing[:6])}')
         return 1
 
     warns = [l for l in out.split('\n') if l.startswith('WARN')]
@@ -189,11 +199,10 @@ def main() -> int:
         if len(warns) > 12:
             print(f'    ……还有 {len(warns) - 12} 条')
         # 骨架只带六份「每个库都必须有」的：接棒必读 / 待办台账 / 台账详情 / 判定记录 / 落点表 / 进度台账。
-        # `做法` 属于「这个库自己的东西」，不由模板代写——抄一份进模板就是让判据分叉，
-        # 两处打架时没人知道哪份对。命名准则与流程总图不在此列：前者是称呼表不是判断，
-        # 后者是十步与接口的全局图，工序文档靠它才读得通，都随 --with-skills 带上。
-        print('    两类来源，都不是问题：① `做法` 按需自建，模板故意不带；')
-        print('       命名准则、流程总图、判据表、判断纪律、findings写法、中间产物格式、派活单模板 都带上了——')
+        # `做法` 只带一、二节（七条常驻原则 + 三级阶梯）：「跟隔壁库差什么」那节是通用库
+        # 自己的账，新库没有「隔壁」。2026-11-08 由「不带」改成「带通用部分」——剧库第一棒
+        # 报 GQ-4：三级阶梯在新库里读不到，同一个坑记到第五次还只是「记」。
+        print('    两类来源，都不是问题：① 命名准则、流程总图、判据表、判断纪律、findings写法、中间产物格式、派活单模板 都带上了——')
         print('       它们被手册和技能正文直接引用，不带就是死链；')
         print('    ② 实证（docs/工序-*-实证.md）记的是「哪一集踩了什么坑」，含真实集号，只留本机；手册已带上。')
         print('    还有两处断是故意的：新库里 5 处指向 `-实证.md` 的指针失效（实证要自己攒），')

@@ -30,6 +30,7 @@
 """
 import argparse
 import csv
+import datetime
 import pathlib
 import re
 import sys
@@ -60,6 +61,46 @@ def read_pairs(path):
     if not need <= set(rows[0]):
         sys.exit(f'配对表缺列：需要 {sorted(need)}，实际 {sorted(rows[0])}')
     return rows
+
+
+def check_source(path, rows, src=None):
+    """配对表的来源校验（2026-11-08 加，剧库 GQ-5）。
+
+    规矩：**新表必须有「来源」列**（`bilingual_pairs.py` 产）；没有的旧表只喊一次，
+    不退出——剧库手上还有 9 份旧表，一律拒跑等于把人挡在门外，那是"闸变成墙"。
+    给了 `--src` 就硬校验：表里记的文件名对不上、或那个文件比表里记的还新，
+    说明字幕在配对表之后被动过，锚点已经不可信，直接拒。
+    """
+    head = rows[0] if rows else {}
+    if '来源' not in head:
+        print(f'  [提示] {path.name} 没有「来源」列——这是旧格式配对表，分不清是哪一版字幕建的。'
+              f'清稿改过中文就必须重建（`bilingual_pairs.py <字幕> --tsv <新表>`），'
+              f'新产的表自动带这一列。', file=sys.stderr)
+        return
+    mark = (rows[0].get('来源') or '').strip()
+    if not mark:
+        print('  [提示] 配对表的「来源」列是空的，等于没记。重跑一次 `bilingual_pairs.py`。',
+              file=sys.stderr)
+        return
+    print(f'  配对表来源：{mark}')
+    if src is None:
+        print('  [提示] 想校验就用 `--src <字幕>`：文件对不上、或字幕比表新，会直接拒跑。',
+              file=sys.stderr)
+        return
+    name, _, stamp = mark.rpartition('@')
+    if name and name != src.name:
+        sys.exit(f'拒跑：配对表是为 {name} 建的，当前给的是 {src.name}——'
+                 f'换过文件就重建配对表，别拿旧表硬套')
+    if stamp:
+        try:
+            made = datetime.datetime.strptime(stamp, '%Y-%m-%dT%H:%M')
+        except ValueError:
+            print(f'  [提示] 来源列的时间格式认不出（{stamp}），跳过时效校验', file=sys.stderr)
+            return
+        live = datetime.datetime.fromtimestamp(src.stat().st_mtime)
+        if live.strftime('%Y-%m-%dT%H:%M') != made.strftime('%Y-%m-%dT%H:%M'):
+            sys.exit(f'拒跑：{src.name} 改到 {live:%Y-%m-%dT%H:%M}，配对表却是 {stamp} 建的——'
+                     f'清稿后没重建配对表，这条链上的锚点已经失配')
 
 
 def read_terms(path):
@@ -303,11 +344,14 @@ def main():
     ap = argparse.ArgumentParser(description='对稿：从配对表挑出嫌疑条目（不给定案）')
     ap.add_argument('pairs', help='align_bilingual.py 出的配对表 TSV')
     ap.add_argument('--term', help='词表 TSV（两列：参照写法 / 规定译法），可选')
+    ap.add_argument('--src', help='当前字幕文件；给了就校验配对表是不是为它建的（来源列）')
     ap.add_argument('--offset', help='人划的错位区间表（三列：起条号 / 止条号 / 理由），区间内跳过不判')
     ap.add_argument('--tsv', help='输出路径')
     args = ap.parse_args()
 
     rows = read_pairs(pathlib.Path(args.pairs))
+    check_source(pathlib.Path(args.pairs), rows,
+                 pathlib.Path(args.src) if args.src else None)
     terms = read_terms(args.term)
     spans = read_offsets(args.offset)
 

@@ -1205,6 +1205,36 @@ def t_mk_meta():
     (d / '片2.tsv').unlink()
 
 
+
+def t_findings2tsv():
+    """findings → 改动表：只出能落地的，evidence 必须搬过来（2026-11-08 新建工具）。"""
+    import json
+    import subprocess
+    here = Path(__file__).resolve().parent
+    tool = here / 'findings2tsv.py'
+    d = Path(tempfile.mkdtemp())
+    data = {'season': '01', 'episode': '01x01', 'findings': [
+        {'ln': 2, 'cn': '原句甲', 'cn_new': '改后甲', 'evidence': '官方第 2 条', 'source_model': 'C1.1'},
+        {'ln': 3, 'cn': '原句乙', 'cn_new': '', 'evidence': 'x', 'source_model': 'C1.5'},
+        {'ln': 4, 'cn': '原句丙', 'cn_new': '原句丙', 'en_after': 'New', 'source_model': 'DR1'}],
+        'inserts': [{'after_no': 5, 'cn': '补的', 'en': 'Ins'}]}
+    src = d / 'f.json'
+    src.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+    out, ins = d / 'all.tsv', d / 'ins.tsv'
+    r = subprocess.run([sys.executable, str(tool), str(src), '--tsv', str(out), '--ins', str(ins)],
+                       capture_output=True, text=True)
+    check('findings2tsv/退出码 0', r.returncode == 0, (r.stderr or '')[-160:])
+    rows = [l.split('\t') for l in out.read_text(encoding='utf-8').strip().splitlines()] if out.is_file() else []
+    check('findings2tsv/表头带 evidence', bool(rows) and rows[0] == ['no', 'old', 'new', 'rule', 'evidence'],
+          str(rows[:1]))
+    check('findings2tsv/只出可落地的 1 条', len(rows) == 2, str(len(rows)))
+    check('findings2tsv/evidence 搬了过来', len(rows) > 1 and rows[1][4] == '官方第 2 条',
+          str(rows[1:2]))
+    check('findings2tsv/补行表 1 条',
+          ins.is_file() and len(ins.read_text(encoding='utf-8').strip().splitlines()) == 2)
+    check('findings2tsv/英文轨那条挑出来交人工', '[人工]' in (r.stdout or ''))
+
+
 def main():
     global VERBOSE
     ap = argparse.ArgumentParser()
@@ -1218,6 +1248,7 @@ def main():
     t_pairs()
     t_land()
     t_land_inserts()
+    t_findings2tsv()
     t_land_inplace()
     t_mk_meta()
     t_accept()

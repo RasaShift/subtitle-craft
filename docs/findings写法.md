@@ -115,6 +115,8 @@ python accept.py --season S0x --expect-findings <N> --expect-inserts <M>
 
 退出码非 0 就是还有红项，**改到 0 再交回**。它调的是 `dialogue_proof.drop_reason`，与 merge 同一份判定——「lint 过了 merge 还丢」这种事不会再有。
 
+**findings 要变成改动表，用 `tools/findings2tsv.py <findings.json> --tsv <all.tsv> --ins <ins.tsv>`**（2026-11-08 新建）：它把 `ln/cn/cn_new/source_model/evidence` 纯映射过去，不做合并、不做判断。只改英文轨的条目它会挑出来交人工——改动表按整行替换，中英得自己拼。
+
 然后跑 `accept`，重点看第 5/6/7 项（cn 逐字、evidence 空、evidence 查无出处）——这三项就是本工序的质量闸。第 1/2/3 项对不上预期条数，先核对自己的写入再喊冤。
 
 > 这一节只加自检动作，不改判定口径，所以不触发回归；改判据类条款才要跑。

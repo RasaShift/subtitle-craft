@@ -12,7 +12,7 @@
 
 A method + toolkit for long-form subtitle proof-reading with AI agents, built for **one person running an AI crew** across dozens of episodes. Not a subtitle editor.
 
-**22 self-contained tools** (probe · bilingual alignment · diff triage · landing & verify · style normalization · acceptance), four documented workflows (cleanup · alignment · review · acceptance), four AI skill entry points, and `scaffold.py` to stamp out a new project skeleton with a self-check.
+**25 self-contained tools** (probe · bilingual alignment · diff triage · landing & verify · style normalization · acceptance), four documented workflows (cleanup · alignment · review · acceptance), four AI skill entry points, and `scaffold.py` to stamp out a new project skeleton with a self-check. Four more scripts need a project directory layout to run.
 
 Built from real runs on two series (116 + 38 episodes). **No episode data, term lists or finished subtitles are shipped** — those stay in private project repos. Python 3 standard library only. License: MIT.
 
@@ -21,6 +21,8 @@ Built from real runs on two series (116 + 38 episodes). **No episode data, term 
 ## 动手前必读
 
 **新会话先读一份**：接手这个库接着开发，读 `docs/接棒必读.md`（告诉你现在到哪、读哪三份）；拿它接**你自己**的剧，直接读 `examples/新剧接入.md`（从零到能判，十二步）。
+
+**版本与改动**：看 `CHANGELOG.md`，每次发版在那儿记新增 / 变更 / 修复。0.x 阶段命令行参数与退出码仍会变，升级前先看对应版本那一节。
 
 **为什么长这样**（定位给谁用、三层资产怎么分、哪些方案已被否决）写在开发者的上游决策文档里，**不随本仓库发布**——一份内容只有一个真身，这里不复制。本库自己的判断依据全在 `docs/判定记录.md`。
 
@@ -76,7 +78,7 @@ python tools/term_candidates.py <字幕或目录> [--min 2] [--tsv 输出.tsv]
 python tools/accept.py <改前> <改后> [--changes 改动.tsv] [--inserts 补行.tsv] [--stage 定档.md]
 python tools/build_base.py <中文.srt> <英文.srt> -o <底本.ass> [--style-from 参照.ass] [--video 1920x1080]
 
-python tools/selftest.py      # 全部工具的函数级回归（244 项），改完代码先跑这个
+python tools/selftest.py      # 全部工具的函数级回归（257 项），改完代码先跑这个
 python tools/doc_lint.py      # 文档体检；想让它提交时自动跑，先 git config core.hooksPath .githooks
 python tools/env_check.py     # 换机器/隔很久回来，先跑这个
 python tools/scaffold.py <目录>   # 把文档骨架展开成一个新库，建完当场跑一次体检

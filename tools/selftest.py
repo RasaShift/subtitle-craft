@@ -1343,6 +1343,19 @@ def t_counts():
         (tmp / '坏数字.md').write_text('11 件主用 + 6 件工程件 + 12 件审稿辅助\n',
                                        encoding='utf-8')
         check('件数/分项数不误报', not errs(), errs())
+
+        # 老库语境（文档目录不叫 docs、工具在 `04_工具/`）：没有 `tools/` 是布局不同，
+        # 不是缺件。报出来就是给老库制造假警——剧库刚把 WARN 从 23 压到 7。
+        old_root = dl.ROOT
+        fake = Path(tempfile.mkdtemp())
+        (fake / '06_治理').mkdir()
+        dl.ROOT, dl.DOCS = fake, fake / '06_治理'
+        try:
+            got = dl.check_counts()
+            check('件数/老库无 tools 不报', got == [], got)
+        finally:
+            dl.ROOT, dl.DOCS = old_root, tmp
+            shutil.rmtree(fake, ignore_errors=True)
     finally:
         dl.DOCS = old_docs
         shutil.rmtree(tmp, ignore_errors=True)

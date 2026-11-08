@@ -497,6 +497,11 @@ def check_counts() -> list:
     out = []
     tdir = ROOT / 'tools'
     if not tdir.is_dir():
+        # 老库语境（文档目录不叫 `docs`）：工具在 `04_工具/`，本来就没有 `tools/`——
+        # 这不是缺件，是这库的布局不同。报出来就是给老库制造假警，与 GQ-12 同一个病根：
+        # 剧库刚把 WARN 从 23 压到 7，多一条它又多一条要解释的噪音。
+        if DOCS.name != 'docs':
+            return []
         return [('WARN', '找不到 tools/ 目录，跳过件数核对')]
     have = {p.name for p in tdir.glob('*.py')}
     total = len(have)

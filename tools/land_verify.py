@@ -90,6 +90,9 @@ def load(path):
     lines = text.splitlines(keepends=True)
     bare = [ln.rstrip('\r\n') for ln in lines]
     kind = 'ass' if path.suffix.lower() == '.ass' else 'srt'
+    # 后缀不可靠：备份惯用 .bak，工具自己复制出来的也未必带 .ass——有 Dialogue 行就是 ASS
+    if kind == 'srt' and any(ln.lower().startswith('dialogue:') for ln in bare):
+        kind = 'ass'
     cues = []
 
     if kind == 'ass':
@@ -387,7 +390,7 @@ def verify(before_path, after_path, rows, inserts=None, allow_lines=0):
                       + (f' + {allow_lines} 其它' if allow_lines else '')
                       + f' = {want_lines}，实际 {len(ab)}（多一行少一行都是改错了地方）')
     if len(ac) != len(expected):
-        issues.append(f'条数应是 {len(bb)} + {len(inserts)} = {len(expected)}，实际 {len(ac)}')
+        issues.append(f'条数应是 {len(bc)} + {len(inserts)} = {len(expected)}，实际 {len(ac)}')
     if has_bom(Path(before_path)) != has_bom(Path(after_path)):
         issues.append('BOM 状态变了（文件头两个字节被改）——内容没变但文件变了')
     if len(ab) != want_lines or len(ac) != len(expected):
@@ -485,17 +488,26 @@ def main():
     if a.dry_run:
         return 0 if (done or added) else 3
 
+    before = src
     if a.in_place:
         dst = src
         bak = src.with_suffix(src.suffix + '.bak')
         if not bak.exists():
             shutil.copy2(src, bak)
             print(f'  备份：{bak.name}')
+        # 写盘后 src 就被覆盖了：先留一份「改前」副本，否则 verify 拿改后比改后，
+        # 必然报满「旧文本在改前就找不到」——文件明明改对了，结论却是打回。
+        before = src.with_name('.' + src.stem + '.before' + src.suffix)
+        shutil.copy2(src, before)
     else:
         dst = Path(a.out) if a.out else src.with_suffix('.fixed' + src.suffix)
-    dst.write_bytes(''.join(out).encode(encoding_of(src)))
 
-    issues, st = verify(src, dst, rows, ins)
+    try:
+        dst.write_bytes(''.join(out).encode(encoding_of(src)))
+        issues, st = verify(before, dst, rows, ins)
+    finally:
+        if before is not src and before.exists():
+            before.unlink()
     print(stat_line(st))
     for x in issues:
         print('  ERROR', x)

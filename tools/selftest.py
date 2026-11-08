@@ -35,6 +35,7 @@ import term_candidates as tc          # noqa: E402
 import accept as ac                  # noqa: E402
 import build_base as bb              # noqa: E402
 import text_scan as ts               # noqa: E402
+import check_rules as cr             # noqa: E402
 
 PASS, FAIL = [], []
 VERBOSE = False
@@ -1089,6 +1090,121 @@ def t_ass_rows():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def t_check_rules():
+    """判据编号闸：四条用例，三条专挑它该拒的形态。"""
+    def run(argv):
+        old = sys.argv
+        sys.argv = ['check_rules.py'] + argv
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                code = cr.main()
+        finally:
+            sys.argv = old
+        return code, buf.getvalue()
+
+    ok = tmp_srt('no\told\tnew\trule\n1\t他来了\t他没有来\tC1.1\n2\t不知道\t不知道\tC2.1\n', 'a.tsv')
+    code, out = run([str(ok)])
+    check('check_rules：编号合规退出 0', code == 0, out)
+
+    noc1 = tmp_srt('no\told\tnew\trule\n1\t不知道\t不知道\tC2.1\n', 'b.tsv')
+    code, out = run([str(noc1)])
+    check('check_rules：C1 为零退出 1', code == 1 and 'C1 组一条都没有' in out, out)
+
+    bad = tmp_srt('no\told\tnew\trule\n1\t他来了\t他没有来\tC1.9\n', 'c.tsv')
+    code, out = run([str(bad)])
+    check('check_rules：编号不在表里退出 1', code == 1 and 'C1.9' in out, out)
+
+    empty = tmp_srt('no\told\tnew\trule\n1\t他来了\t他没有来\tC1.1\n2\t他\t他\t\n', 'd.tsv')
+    code, out = run([str(empty)])
+    check('check_rules：rule 为空退出 1', code == 1 and 'rule 是空的' in out, out)
+
+    # 用得极窄：12 条全挤在 C1.1 上——不判失败（可能真就只有这一类），但必须提示
+    rows = ''.join('%d\t甲%d\t乙%d\tC1.1\n' % (i, i, i) for i in range(1, 13))
+    narrow = tmp_srt('no\told\tnew\trule\n' + rows, 'n.tsv')
+    code, out = run([str(narrow)])
+    check('check_rules：用得极窄要提示', code == 0 and '只用到 1 种判据' in out, out)
+    check('check_rules：F 为零只提示不失败', code == 0 and 'F 类' in out, out)
+
+
+def t_land_inplace():
+    """落地 --in-place：写盘后必须还能自证。
+
+    2026-11-08 实测踩到：in-place 时 dst 就是 src，写完再 verify(src, dst) 等于拿改后
+    比改后，必报满「旧文本在改前就找不到」——文件明明改对了，结论却是打回。此前 224 条
+    自检全绿，因为全部是手动调 apply + 单独写 dst，从没走过 main() 的 in-place 分支。
+    """
+    import subprocess
+    ass = ('[Script Info]\nScriptType: v4.00+\n\n[Events]\n'
+           'Format: Layer, Start, End, Style, Actor, MarginL, MarginR, MarginV, Effect, Text\n'
+           "Dialogue: 0,0:00:40.30,0:00:41.03,Default,NTP,0,0,0,,就是今晚\\N{\\rEnglish}Tonight.\n")
+    d = Path(tempfile.mkdtemp())
+    src, ch = d / 'a.ass', d / 'c.tsv'
+    src.write_bytes(ass.encode('utf-8'))
+    ch.write_text('条号\t旧文本\t新文本\n1\t就是今晚\t正是今晚\n', encoding='utf-8', newline='')
+
+    r = subprocess.run([sys.executable, str(TOOLS / 'land_verify.py'), 'apply',
+                        str(src), str(ch), '--in-place'],
+                       capture_output=True, text=True, encoding='utf-8', errors='replace')
+    check('落地in-place/退出码 0', r.returncode == 0, (r.stdout + r.stderr).strip()[:220])
+    check('落地in-place/写盘后自证通过', '在位 1' in r.stdout and '不符 0' in r.stdout, r.stdout.strip()[:220])
+    check('落地in-place/中文已换', '正是今晚' in src.read_text(encoding='utf-8'), '文件没变')
+    left = [p.name for p in d.iterdir() if '.before' in p.name]
+    check('落地in-place/不留临时副本', not left, str(left))
+
+    # 后缀不可靠：备份叫 .bak 也得按内容认出来，否则「拿备份重验」这条路是死的
+    _l, cues, kind = lv.load(d / 'a.ass.bak')
+    check('落地/备份按内容认 ASS', kind == 'ass' and len(cues) == 1, f'{kind} {len(cues)}')
+
+
+def t_mk_meta():
+    """mk_meta：分片行数与源对得上才产 meta，对不上就拒。
+
+    口径要点：`meta.rows` = **各片行数相加，不含 skipped**。2026-11-08 写成源总条数，
+    check_slices 当场报「总行数对不上：各片相加=913，meta.rows=973」。
+    """
+    import json
+    import subprocess
+    ass = ('[Script Info]\nScriptType: v4.00+\n\n[Events]\n'
+           'Format: Layer, Start, End, Style, Actor, MarginL, MarginR, MarginV, Effect, Text\n'
+           "Dialogue: 0,0:00:01.00,0:00:02.00,Default,NTP,0,0,0,,一\\N{\\rEnglish}One.\n"
+           "Dialogue: 0,0:00:03.00,0:00:04.00,Default,NTP,0,0,0,,二\\N{\\rEnglish}Two.\n"
+           "Dialogue: 0,0:00:05.00,0:00:06.00,Default,NTP,0,0,0,,三\\N{\\rEnglish}Three.\n")
+    d = Path(tempfile.mkdtemp())
+    src = d / 'x.S01E02.ass'
+    src.write_bytes(ass.encode('utf-8'))
+
+    def slice_file(name, n, first):
+        body = ['行号\t时间码\t中文\t英文'] + ['%d\t0:00:01.00\t字\tw' % (first + i) for i in range(n)]
+        (d / name).write_text('\n'.join(body) + '\n', encoding='utf-8-sig')
+
+    def run(*extra):
+        return subprocess.run([sys.executable, str(TOOLS / 'mk_meta.py'), str(d), str(src)] + list(extra),
+                              capture_output=True, text=True, encoding='utf-8', errors='replace')
+
+    slice_file('片1.tsv', 2, 6)          # 源 3 条，片1 拿 2 条 → skipped 1
+    r = run('--force')
+    meta = json.loads((d / 'meta.json').read_text(encoding='utf-8'))
+    check('mk_meta/退出码 0', r.returncode == 0, (r.stdout + r.stderr).strip()[:200])
+    check('mk_meta/rows 是各片相加', meta['rows'] == 2, f"rows={meta['rows']}（应是各片相加 2，不是源 3）")
+    check('mk_meta/差额进 skipped', meta['skipped'] == {'未归类': 1}, str(meta['skipped']))
+    check('mk_meta/自动认集号', meta['ep'] == 'S01E02', meta['ep'])
+
+    # 已有 meta.json 不加 --force 就不许覆盖
+    r2 = run()
+    check('mk_meta/不覆盖已有文件', r2.returncode != 0, f'退出码 {r2.returncode}')
+
+    # 跳过明细合计对不上 → 拒
+    r3 = run('--force', '--skip', 'a=5')
+    check('mk_meta/跳过明细对不上就拒', r3.returncode != 0, f'退出码 {r3.returncode}')
+
+    # 各片相加超过源 → 拒（片切错了或源给错了）
+    slice_file('片2.tsv', 5, 10)
+    r4 = run('--force')
+    check('mk_meta/片比源还多就拒', r4.returncode != 0, f'退出码 {r4.returncode}')
+    (d / '片2.tsv').unlink()
+
+
 def main():
     global VERBOSE
     ap = argparse.ArgumentParser()
@@ -1102,6 +1218,8 @@ def main():
     t_pairs()
     t_land()
     t_land_inserts()
+    t_land_inplace()
+    t_mk_meta()
     t_accept()
     t_base()
     t_base_make()
@@ -1112,6 +1230,7 @@ def main():
     t_doclint_skills()
     t_handoff_fresh()
     t_ass_rows()
+    t_check_rules()
 
     print(f'\n通过 {len(PASS)}，失败 {len(FAIL)}')
     if FAIL:

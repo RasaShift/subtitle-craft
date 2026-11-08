@@ -2,6 +2,7 @@
 eol_guard.py	本库 tools/	日常杂活/04_工具/eol_guard.py	双份·同源	2026-11-05 从日常杂活复制，只改了用法里的路径。**改一处必须改另一处**；按「通用件真身放通用库」，最终应以本库为准、日常杂活改指针（那本由别的会话维护，要赵哥点头才动）
 doc_lint.py	本库 tools/	日常杂活/04_工具/doc_lint.py	已分叉	本库版删掉 MOC 检查、上限按本库《文档落点表》。两边规则不同，属于两个库各自的体检，不能互相覆盖
 doc_split.py	本库 tools/	日常杂活 有同类脚本	重写	本库是重写的精简版，不是复制；接口一致（--threshold / --move / --to）
+check_rules.py	本库 tools/	无	唯一	2026-11-08 新建：审稿改动表的判据编号闸。`rule` 列每格必须落在 `docs/工序-审稿-判据表.tsv` 的 33 条里；C1 组为零直接拒——那是「没读十四条就开判」的症状。只验编号不验判断，判得对不对仍靠人复核
 subtitle_probe.py	本库 tools/	无	唯一	日常杂活已不保留
 align_bilingual.py	本库 tools/	无	唯一	—
 triage_diff.py	本库 tools/	无	唯一	—
@@ -25,3 +26,4 @@ split_by_tier.py	本库 tools/	无	唯一	复核后按档分流。参数签名�
 term_candidates.py	本库 tools/	无	唯一	11-05 新建；术语候选提取，只挑候选不给译法
 text_scan.py	本库 tools/	无	唯一	11-07 新建；文本层扫描 `MT1`–`MT4`
 validate_semantic.py	本库 tools/	无	唯一	语义审读 JSON → findings 结构。**本库跑不动**：默认在库根递归找该集 ass（台账 `#26`）
+mk_meta.py	本库 tools/	无	唯一	2026-11-08 新建：扫目录里 片N.tsv 数行数、数源字幕总条数，产 meta.json。口径 meta.rows = 各片相加（不含 skipped），与 check_slices 一致；cut 算不出来不产，已有的人工键重跑 --force 保留

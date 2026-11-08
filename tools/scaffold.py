@@ -36,7 +36,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SKELETON = ROOT / 'examples' / '新库骨架'
-TOOLS = ('doc_lint.py', 'doc_split.py', 'eol_guard.py')
+TOOLS = ('doc_lint.py', 'doc_split.py', 'eol_guard.py', 'gen_progress.py')
 # 需要替换占位符的文件：按后缀和文件名两种认法（.gitattributes 和钩子都没后缀）
 PLAIN = {'.md', '.txt'}
 

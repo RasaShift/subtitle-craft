@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# 最近修改：2026-11-08（加 VERSION：拷贝式分发下必须能自证版本；引用死链在老库语境跳过通用库四层前缀）
+# 最近修改：2026-11-08T2130（VERSION 带时分；--docs 生效时三处硬编码一并改到、归档豁免认 `_存档`、老库不再为本库文档报噪音）
 """doc_lint.py -- 文档体检：把「文档该怎么写」从陈述句改成可机检的断言
 
 为什么有它：文档乱掉的共因只有三条——规矩写在被管的文件里、超限没有出口、
@@ -24,8 +24,10 @@
 改数字之前先想清楚为什么原来那个不够。
 
 **版本（2026-11-08 加）**：本脚本是「拷进别的库」分发的，副本过期没有任何征兆——
-剧库那份跑得动、报「没有 ERROR」，只是少了一批检查。所以输出末尾带 `vYYYY-MM-DD`，
+剧库那份跑得动、报「没有 ERROR」，只是少了一批检查。所以输出末尾带 `vYYYY-MM-DDTHHMM`，
 两边一对就知道是不是同一版。**改本脚本必须改 VERSION 这一行。**
+**只到天不够（2026-11-08T21:30 改）**：本脚本一天内改过四次，天级版本号分不出前后，
+`2026-11-08` 那一版和三小时后的版本打印出来一模一样。时分是这条检查的最低分辨率。
 """
 import argparse
 import re
@@ -33,7 +35,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = '2026-11-08'
+VERSION = '2026-11-08T2130'
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / 'docs'
@@ -290,7 +292,10 @@ UPDATED = re.compile(r'最后更新[：:]\s*(\d{4}-\d{2}-\d{2})')
 # 这几份一变，接棒必读就该跟着变——它们承载的是「现在到哪了」和「为什么」
 # 详情也算：改了某条的卡点/前置，往往意味着「现在到哪」变了，接棒必读该同步。
 # 只跟简表会漏——活都干在详情里，简表反而是最后才动的那份。
-FOLLOWERS = ['docs/待办台账.md', 'docs/待办台账-详情.md', 'docs/判定记录.md']
+# 2026-11-08T21:30（剧库 #9）：**不许写死 `docs/`，也不许在模块级算**。
+# 原来是 `docs/…` 硬编码，而 --docs 只改 `globals()['DOCS']`，发生在模块加载之后——
+# 在模块级拼的话拿到的还是旧 DOCS。所以这三行必须在函数里现算（见 check_handoff_doc）。
+FOLLOWER_NAMES = ['待办台账.md', '待办台账-详情.md', '判定记录.md']
 
 
 def check_handoff_doc() -> list:
@@ -306,7 +311,8 @@ def check_handoff_doc() -> list:
     """
     p = DOCS / '接棒必读.md'
     if not p.is_file():
-        return [('ERROR', '缺 docs/接棒必读.md——交接没有入口，新会话只能靠猜')]
+        return [('ERROR', f'缺 {DOCS.name}/接棒必读.md——交接没有入口，新会话只能靠猜')]
+    followers = [f'{DOCS.name}/{n}' for n in FOLLOWER_NAMES]
     out = []
     m = None
     for ln in read(p):
@@ -324,16 +330,16 @@ def check_handoff_doc() -> list:
     # 所以判「连续两次都脏」才报：真改了文件，两次都会脏；只是缓存没跟上，第二次就干净了。
     # 宁可漏报一次缓存边界，也不要给一条假 WARN——假报一次，这条检查就没人看了。
     _git('update-index', '-q', '--refresh')
-    dirty = _git('status', '--porcelain', '--', *FOLLOWERS)
-    if dirty and _git('status', '--porcelain', '--', *FOLLOWERS):
+    dirty = _git('status', '--porcelain', '--', *followers)
+    if dirty and _git('status', '--porcelain', '--', *followers):
         out.append(('WARN', '台账 / 判定记录有未提交的改动——提交前确认接棒必读跟上了'
                             '（同一件事一次提交，别分两笔）'))
 
     # ② 已提交的：比 commit，不比日期
-    mine = git_last_commit('docs/接棒必读.md')
+    mine = git_last_commit(f'{DOCS.name}/接棒必读.md')
     if not mine:                      # 新库 / 没初始化 git：有日期行就够了
         return out
-    for rel in FOLLOWERS:
+    for rel in followers:
         theirs = git_last_commit(rel)
         if not theirs or theirs == mine:
             continue                  # 同一次提交改的，正是要的状态
@@ -375,13 +381,15 @@ def check_refs() -> list:
         查了全是误报；误报会让整条检查被无视。
       · 首段是隔壁库目录（`ROOT.parent / 首段` 存在）就跳过——跨库指针本来就找不到。
 
-    第三条（2026-11-07）：`docs/archive/` 整个跳过。归档是历史账本，记的是当时的事实
+    第三条（2026-11-07）：归档目录整个跳过。归档是历史账本，记的是当时的事实
     与当时的路径；结构一改里面全是「死链」，但那些链在写下那一刻是真的。查它等于逼人
     篡改历史，而账本只增不改。
+    **2026-11-08T21:30（剧库 #9）**：原来只认英文 `archive`，老库把归档叫 `_存档/`，
+    于是理由完全成立、检查照样不豁免——固定报 3 条死链。名字不是判据，**凡是归档目录都豁免**。
     """
     out = []
     for p in walk_md():
-        if 'archive' in p.parts:
+        if any(x in p.parts for x in ('archive', '_存档', '归档')):
             continue
         for i, ln in enumerate(read(p), 1):
             for ref in MD_REF.findall(ln):
@@ -472,7 +480,8 @@ def check_archive(root: Path = None) -> list:
 # 2026-11-08（#38）加：哪四件脚本要项目目录才跑得动。这是「能独立跑 N 件」的真身——
 # 文档报的数由 total 减这四件算出来；名单过期就报 ERROR，不许文档和代码各说一套。
 NEEDS_PROJECT = ('blind_sample.py', 'isolate_review.py',
-                 'prefilter_semantic.py', 'validate_semantic.py')
+                 'prefilter_semantic.py', 'validate_semantic.py',
+                 'gen_progress.py')
 
 # 只认这几种明确写法。宁可漏认，也别宽到把「12 件审稿辅助」当总数——
 # 误报一次，这道闸就会被人绕开，等于没设。
@@ -482,6 +491,24 @@ _CNT_PATTERNS = (
     (re.compile(r'能独立跑的?\s*(\d{1,3})\s*件'), 'runnable'),
     (re.compile(r'(\d{1,3})\s*件能独立跑'), 'runnable'),
 )
+
+
+def check_progress_head() -> list:
+    """进度台账头部必须自带「禁止手改」。
+
+    2026-11-08 加（剧库 #8）：GQ-2 只说了「骨架缺这份文件」，没给生成方式，于是
+    各库自己建、自己填——**给空文件的结果就是各家手填，而手填必然落后，落后还不报错**。
+    骨架已换成 `gen_progress.py` 的产物，这条闸防的是「下一个人把它改回手工表」。
+    没有这份文件的库不报：通用库自己就用剧库的台账。
+    """
+    p = DOCS / '进度台账.md'
+    if not p.is_file():
+        return []
+    head = '\n'.join(read(p)[:6])
+    if '禁止手改' in head or '禁手改' in head:
+        return []
+    return [('WARN', f'{DOCS.name}/进度台账.md 头部没写「禁止手改」——'
+                     f'这份应由 tools/gen_progress.py 生成；手填必然落后，且不会报错')]
 
 
 def check_counts() -> list:
@@ -506,10 +533,11 @@ def check_counts() -> list:
     have = {p.name for p in tdir.glob('*.py')}
     total = len(have)
     present = [n for n in NEEDS_PROJECT if n in have]
-    # 名单核验只在「这个库装了那批工具」时才有意义。骨架库只带 3 件工程件
-    # （doc_lint / doc_split / eol_guard），一件都不在——那不是名单过期，是这库没装，
-    # 报出来就是误报；一处误报，整道闸就会被当成噪音绕开。
-    if present and len(present) != len(NEEDS_PROJECT):
+    # 名单核验只在「本库就是通用库本身」时才有意义——`scaffold.py` 只在通用库的
+    # `tools/` 里，骨架库只带 4 件工程件，名单当然不齐：那不是过期，是没装。
+    # 2026-11-08 改：原来用「装了其中任意一件」当语境判定，骨架带上 gen_progress 之后
+    # 这个前提就破了，新库一建出来就报一条假 ERROR。**判语境要看只有本库才有的东西。**
+    if (ROOT / 'tools' / 'scaffold.py').is_file() and len(present) != len(NEEDS_PROJECT):
         lost = [n for n in NEEDS_PROJECT if n not in have]
         out.append(('ERROR', f'doc_lint 的 NEEDS_PROJECT 里有 {lost}，tools/ 下找不到——'
                              f'名单过期或工具改名了，先改 tools/doc_lint.py 里这个常量'))
@@ -569,6 +597,13 @@ def main() -> int:
     for name, cfg in LIMITS.items():
         p = DOCS / name
         if not p.is_file():
+            # 2026-11-08T21:30（剧库 #9）：老库不该为「本库没有的文档」背 4 条噪音。
+            # LIMITS 里「做法 / 流程总图 / 命名准则 / 协作协议」是通用库自己的，
+            # 老库跑 --docs 时它们必然不在——照报就是逼人把 WARN 总数当背景音。
+            # 判据用 DOCS 名字定语境，和 check_refs 同一条（不能看见文件名就跳，
+            # 本库自己缺件必须照报 E R R O R 级的缺件提醒）。
+            if DOCS.name != 'docs':
+                continue
             issues.append(('WARN', f'找不到 {DOCS.name}/{name}（跳过）'))
             continue
         try:
@@ -607,6 +642,7 @@ def main() -> int:
     issues += check_long_lines()
     issues += check_refs()
     issues += check_counts()
+    issues += check_progress_head()
     issues += check_handoff_doc()
     issues += check_skills()
     issues += check_taizhang_note()

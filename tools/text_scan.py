@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# 最近修改：2026-11-07（新建：文本层扫描器 MT1–MT4，能改的出口径、要判断的进需人判表）
+# 最近修改：2026-11-08T2130（词表加载拒绝「错写法是另一条译法子串」；摘要按规则打「处 / 行」两个数）
 """text_scan.py -- 清稿·文本层扫描：只按唯一改法机改，判断一律不碰
 
 管四条（编号与改法见 docs/工序-清稿-规则清单.md 第二节）：
@@ -54,8 +54,11 @@ def load_terms(path):
 
     第三列「已见错写法」按 `|` `;` `；` 分隔，可写多个。
     **同一个错写法登记两次 → 拒绝加载**，不许工具挑一个——挑错了没人看得出来。
+    **错写法是某条规定译法的一部分 → 也拒绝加载**（2026-11-08T2130，剧库 #5）：
+    `伯纳` 是 `伯纳德` 的前缀，替换出来是「伯纳德德」，剧库 E02 实测 9 处。
+    这条能挡在扫描之前，就别等成品里看见叠字再回改。
     """
-    rows, seen = [], {}
+    rows, seen, dests = [], {}, set()
     for i, line in enumerate(lv.decode(path).splitlines()):
         if not line.strip():
             continue
@@ -67,6 +70,7 @@ def load_terms(path):
         dst = parts[1].strip()
         if not dst:
             lv.fail(f'词表第 {i + 1} 行「{parts[0]}」没填规定译法')
+        dests.add(dst)
         raw = parts[2].strip() if len(parts) > 2 else ''
         for w in [x.strip() for x in re.split(r'[|;；]', raw) if x.strip()]:
             if w in seen:
@@ -74,6 +78,15 @@ def load_terms(path):
                         f'——同一处只能有一个答案')
             seen[w] = dst
             rows.append((w, dst))
+    # 子串冲突：错写法出现在任一条规定译法里，替换就会叠字。
+    # 单字错写不在此列——r_mt1 已把它们排除在替换之外，只报不改，造不出叠字。
+    for w, dst in rows:
+        if len(w) < 2:
+            continue
+        for d2 in dests:
+            if w != d2 and w in d2:
+                lv.fail(f'词表里错写法「{w}」（→「{dst}」）是规定译法「{d2}」的一部分'
+                        f'——替换后叠字。两条改一条：错写法写长，或确认这条不该机改')
     rows.sort(key=lambda r: -len(r[0]))
     return rows
 
@@ -279,7 +292,15 @@ def main():
 
     print(f'扫描 {path.name}：可机改 {st["changed"]} 条，需人判 {st["hold"]} 条')
     if st['changed']:
-        print('按规则：' + ' / '.join(f'{k} {v}' for k, v in st['rules'].items() if v))
+        # 2026-11-08T2130（剧库 #11）：原来只打命中次数，而 tsv 按行落盘——同一条命中
+        # 两个词表条目时摘要比 tsv 多 1（实测 MT1 报 2、tsv 只 1 行）。而「先看规则分布、
+        # 某条占九成就先怀疑匹配键」这条做法（工序-对稿-手册）靠的正是这个数。
+        landed = {}
+        for r in rows:
+            landed[r[3]] = landed.get(r[3], 0) + 1
+        print('按规则：' + ' / '.join(
+            f'{k} {v} 处、{landed.get(k, 0)} 行'
+            for k, v in st['rules'].items() if v))
     if a.tsv:
         write_tsv(a.tsv, ['no', 'old', 'new', 'rule', 'note'], rows)
         print(f'机改清单已写：{a.tsv}（{len(rows)} 行）')

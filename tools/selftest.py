@@ -997,12 +997,22 @@ def t_text_scan():
     rows6, _, _ = ts.scan(mk(['他叫奥德曼']), ts.load_terms(tsv))
     check('文本层/词表错写法被改', bool(rows6) and rows6[0][2] == '他叫奥尔德曼', str(rows6))
 
-    # 替换结果不能再被扫一遍：伯拿 / 伯纳 都映射到伯纳德，两遍扫描会造「伯纳德德」
+    # 替换结果不能再被扫一遍：伯拿 / 伯纳 都映射到伯纳德，两遍扫描会造「伯纳德德」。
+    # 2026-11-08T2130 改：这种词表现在**整份会被 load_terms 拒掉**（子串冲突，见下一条），
+    # 所以直接调 r_mt1 测「单遍扫描」这个机制本身——校验挡的是「不该进表的词表」，
+    # 机制挡的是「表万一进了」的兜底，两层各测各的，别合并成一条。
+    s_dup, hits_dup, _ = ts.r_mt1('请叫我伯拿 谢谢', [('伯拿', '伯纳德'), ('伯纳', '伯纳德')])
+    check('文本层/替换结果不被二次替换', s_dup == '请叫我伯纳德 谢谢' and bool(hits_dup), s_dup)
+
+    # 错写法是任一条规定译法的子串 → 拒绝加载（剧库 #5：E02 实测「伯纳德德」9 处）
     tsv4 = d1 / 'term4.tsv'
     tsv4.write_text('原文\t规定译法\t已见错写法\nBernard\t伯纳德\t伯拿|伯纳\n', encoding='utf-8')
-    rows_dup, _, _ = ts.scan(mk(['请叫我伯拿 谢谢']), ts.load_terms(tsv4))
-    check('文本层/替换结果不被二次替换',
-          bool(rows_dup) and rows_dup[0][2] == '请叫我伯纳德 谢谢', str(rows_dup))
+    try:
+        ts.load_terms(tsv4)
+        sub_ok = False
+    except SystemExit as e:
+        sub_ok = (e.code == 2)
+    check('文本层/错写法是译法子串拒绝加载', sub_ok)
 
     tsv2 = d1 / 'term2.tsv'
     tsv2.write_text('原文\t规定译法\t已见错写法\nXxx\t甲\t乙\n', encoding='utf-8')
@@ -1297,6 +1307,48 @@ def t_cross_lib():
         fresh.unlink()
 
 
+def t_gen_progress():
+    """进度台账生成器：判「文件名能证明的进度」，缺紧邻前序要标损（2026-11-08 加）。
+
+    这条防的是**我自己写错的那一版**：只留最高阶、丢掉中间阶的证据，于是
+    base/styled/mech 三份都在的一集也报「缺样式」——假警一次，整张表就没人看了。
+    """
+    import gen_progress as gpr
+    head = ('[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize\n'
+            'Style: Default,Arial,20\n\n[Events]\n'
+            'Format: Layer, Start, End, Style, Actor, MarginL, MarginR, MarginV, Effect, Text\n')
+
+    def mk_ass(p, n):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        body = ''.join(f'Dialogue: 0,0:00:{i:02d}.00,0:00:{i + 1:02d}.00,Default,,0,0,0,,第{i}句\n'
+                       for i in range(1, n + 1))
+        p.write_bytes((head + body).encode('utf-8'))
+
+    root = Path(tempfile.mkdtemp())
+    w = root / '工作区'
+    mk_ass(w / '1_base' / 'E1.base.ass', 2)
+    mk_ass(w / '2_styled' / 'E1.styled.ass', 3)
+    mk_ass(w / '3_mech' / 'E1.mech.ass', 3)
+    mk_ass(w / '3_mech' / 'E2.mech.ass', 4)
+
+    got = gpr.scan(w, root / '没有成品')
+    check('进度/取最高阶', got['E1']['label'] == '清稿', str(got.get('E1')))
+    check('进度/缺紧邻前序才标损', [x[0] for x in gpr.damaged(got)] == ['E2'],
+          str(gpr.damaged(got)))
+
+    # 达档不查前序：成品在就算走完，中间层被清过是常态（重跑后旧层删掉）。
+    # 注意 E2 的「缺样式」仍然要在——达档豁免只对达档那几集生效。
+    (root / '成品').mkdir()
+    mk_ass(root / '成品' / 'E3.ass', 5)
+    got2 = gpr.scan(w, root / '成品')
+    check('进度/达档不查前序', [x[0] for x in gpr.damaged(got2)] == ['E2'],
+          str(gpr.damaged(got2)))
+
+    # 条数取的是「最高阶那份」的行数，不是最长的
+    rows = {r[0]: r[2] for r in gpr.rows(got)}
+    check('进度/条数取最高阶产物', rows.get('E1') == 3, str(rows))
+
+
 def t_counts():
     """文档写的工具件数，必须跟 tools/ 实际文件数对得上（2026-11-08 加，`#38`）。
 
@@ -1389,6 +1441,7 @@ def main():
     t_ass_rows()
     t_check_rules()
     t_cross_lib()
+    t_gen_progress()
     t_counts()
 
     print(f'\n通过 {len(PASS)}，失败 {len(FAIL)}')

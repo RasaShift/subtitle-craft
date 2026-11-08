@@ -146,9 +146,9 @@ def main() -> int:
     dst.mkdir(parents=True, exist_ok=True)
     memory = dst / '.workbuddy' / 'memory'
     memory.mkdir(parents=True, exist_ok=True)
-    keep = memory / '.gitkeep'
-    if not keep.exists():
-        keep.write_text('', encoding='utf-8')
+    # 记忆层模板（2026-11-08）：骨架自带 `.workbuddy/memory/MEMORY.md`，由上面的主循环
+    # 复制并替换 `{{库名}}`——别在这儿再 copy 一份，那样会抢在主循环前面写入未替换的原文，
+    # 主循环见目标已存在就跳过，于是 `{{库名}}` 永远留在新库里（实测撞过一次）。
     # 三层目录：`examples/新剧接入.md:21` 定了这个结构，成品与中间件不能混在一起。
     # 2026-11-08 加（剧库报的 GQ-9：建完没有成品层，finalB2.ass 和 mech/mech2 同目录）。
     for sub in ('01_源字幕', '02_工作区', '03_成品'):

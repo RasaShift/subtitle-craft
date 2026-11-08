@@ -1,0 +1,5 @@
+# 工作日志不进版本库：含真实集号与剧名，逐条脱敏成本远高于收益，且必然漏。
+# MEMORY.md 是手写定论、不含台词，单独放行——它没有历史，改错了就回不去。
+.workbuddy/memory/*
+!.workbuddy/memory/MEMORY.md
+.workbuddy/tmp/

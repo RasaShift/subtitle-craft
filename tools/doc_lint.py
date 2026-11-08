@@ -387,6 +387,40 @@ def check_refs() -> list:
     return out
 
 
+
+MEMORY_LIMIT = 3000     # 自动注入层的字符上限（2026-11-08）
+LOG_LIMIT = 20000       # 单日日志字节上限（2026-11-08）
+
+
+def check_memory(root: Path = None) -> list:
+    """记忆层两道闸（2026-11-08 加）。
+
+    为什么要（原话）：MEMORY.md 是唯一「新会话不用读、系统自动塞进上下文」的一层，
+    它一超长，注入时会被压缩，靠后的条目直接看不到——**比没写更糟，因为你以为写了**。
+    日志同理：一天写过 20K 就不是日志，是聊天记录转录，没人会读完，等于没记。
+
+    这两项原先一个字的上限都没有（docs/ 那套每份都有行数闸），所以必然越写越长。
+    """
+    out = []
+    mem = (root or ROOT) / '.workbuddy' / 'memory'
+    m = mem / 'MEMORY.md'
+    if m.is_file():
+        n = len(m.read_text(encoding='utf-8', errors='replace'))
+        if n > MEMORY_LIMIT:
+            out.append(('WARN', f'MEMORY.md {n} 字符（上限 {MEMORY_LIMIT}）：'
+                                f'它是自动注入层，超了会被压缩、靠后条目看不到。'
+                                f'只留「不看就会干错事」的，其余搬 docs/'))
+    logs = sorted(mem.glob('20[0-9][0-9]-[0-9][0-9]-[0-9][0-9].md'))
+    if logs:
+        last = logs[-1]
+        n = last.stat().st_size
+        if n > LOG_LIMIT:
+            out.append(('WARN', f'日志 {last.name} {n / 1024:.0f}K（上限 {LOG_LIMIT / 1024:.0f}K）：'
+                                f'这不是日志是聊天记录。只留判断过程和为什么改主意，'
+                                f'操作流水不记'))
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('-q', '--quiet', action='store_true', help='只报 ERROR')
@@ -437,6 +471,7 @@ def main() -> int:
     issues += check_skills()
     issues += check_taizhang_note()
     issues += check_skill_scripts()
+    issues += check_memory()
 
     err = [x for x in issues if x[0] == 'ERROR']
     warn = [x for x in issues if x[0] == 'WARN']

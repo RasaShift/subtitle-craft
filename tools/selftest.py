@@ -1297,6 +1297,57 @@ def t_cross_lib():
         fresh.unlink()
 
 
+def t_counts():
+    """文档写的工具件数，必须跟 tools/ 实际文件数对得上（2026-11-08 加，`#38`）。
+
+    为什么有这条：同一天四份文档写成四个数（README 244 / 协议 254 / 接棒必读 254 /
+    做法 218），全是手改漏改，没有一处会报。真身在磁盘上，就让脚本去比。
+    判法不立「参数真身表」——表自己会过期，是第四份真身。
+    """
+    import shutil
+    import doc_lint as dl
+
+    def errs():
+        return [m for t, m in dl.check_counts() if t == 'ERROR']
+
+    check('件数/本库不报 ERROR', not errs(), errs())
+
+    tdir = dl.ROOT / 'tools'
+    total = len(list(tdir.glob('*.py')))
+    runnable = total - len([n for n in dl.NEEDS_PROJECT if (tdir / n).exists()])
+
+    old_docs = dl.DOCS
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        dl.DOCS = tmp
+        (tmp / '坏数字.md').write_text('一共 3 件工具，其中 2 件能独立跑\n', encoding='utf-8')
+        got = errs()
+        check('件数/总数写错报 ERROR', any('工具总数 3' in m for m in got), got)
+        check('件数/可跑数写错报 ERROR',
+              any('能独立跑的件数 2' in m for m in got), got)
+
+        # 写对的时候不许报——这条防的是「一律报红」，那种闸会被绕开
+        (tmp / '坏数字.md').write_text(
+            f'一共 {total} 件工具，其中 {runnable} 件能独立跑\n', encoding='utf-8')
+        check('件数/写对了不报', not errs(), errs())
+
+        # 名单过期：NEEDS_PROJECT 列了 tools/ 下没有的脚本，说明常量该改了
+        old_need = dl.NEEDS_PROJECT
+        dl.NEEDS_PROJECT = old_need + ('不存在的脚本.py',)
+        try:
+            check('件数/名单过期报 ERROR', any('名单过期' in m for m in errs()), errs())
+        finally:
+            dl.NEEDS_PROJECT = old_need
+
+        # 「12 件审稿辅助」这类分项数不是总数，不许被当成报数抓走
+        (tmp / '坏数字.md').write_text('11 件主用 + 6 件工程件 + 12 件审稿辅助\n',
+                                       encoding='utf-8')
+        check('件数/分项数不误报', not errs(), errs())
+    finally:
+        dl.DOCS = old_docs
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main():
     global VERBOSE
     ap = argparse.ArgumentParser()
@@ -1325,6 +1376,7 @@ def main():
     t_ass_rows()
     t_check_rules()
     t_cross_lib()
+    t_counts()
 
     print(f'\n通过 {len(PASS)}，失败 {len(FAIL)}')
     if FAIL:

@@ -466,6 +466,68 @@ def check_archive(root: Path = None) -> list:
     return out
 
 
+# 2026-11-08（#38）加：哪四件脚本要项目目录才跑得动。这是「能独立跑 N 件」的真身——
+# 文档报的数由 total 减这四件算出来；名单过期就报 ERROR，不许文档和代码各说一套。
+NEEDS_PROJECT = ('blind_sample.py', 'isolate_review.py',
+                 'prefilter_semantic.py', 'validate_semantic.py')
+
+# 只认这几种明确写法。宁可漏认，也别宽到把「12 件审稿辅助」当总数——
+# 误报一次，这道闸就会被人绕开，等于没设。
+_CNT_PATTERNS = (
+    (re.compile(r'(?:一共\s*)?(\d{1,3})\s*(?:件|个)(?:工具|脚本)'), 'total'),
+    (re.compile(r'工具\s*(\d{1,3})\s*件'), 'total'),
+    (re.compile(r'能独立跑的?\s*(\d{1,3})\s*件'), 'runnable'),
+    (re.compile(r'(\d{1,3})\s*件能独立跑'), 'runnable'),
+)
+
+
+def check_counts() -> list:
+    """文档里写死的「N 件工具 / N 件能独立跑」必须跟 tools/ 实际文件数一致。
+
+    为什么不立一张「参数真身表」：表本身会过期，等于又造一份真身——GQ-15 否掉
+    `变更记录.tsv` 用的就是这条理由。这里的真身是磁盘上的文件，文档只许跟它对。
+
+    只查两样零成本数得出来的（工具总数、可独立跑件数）。工时 / 密度区间 / 画布
+    数不出唯一值，不在此列，靠判据首行版本戳加广播管。
+    **CHANGELOG 不查**：它记的是各版本当时的事实，旧版本写旧数是对的。
+    """
+    out = []
+    tdir = ROOT / 'tools'
+    if not tdir.is_dir():
+        return [('WARN', '找不到 tools/ 目录，跳过件数核对')]
+    have = {p.name for p in tdir.glob('*.py')}
+    total = len(have)
+    present = [n for n in NEEDS_PROJECT if n in have]
+    # 名单核验只在「这个库装了那批工具」时才有意义。骨架库只带 3 件工程件
+    # （doc_lint / doc_split / eol_guard），一件都不在——那不是名单过期，是这库没装，
+    # 报出来就是误报；一处误报，整道闸就会被当成噪音绕开。
+    if present and len(present) != len(NEEDS_PROJECT):
+        lost = [n for n in NEEDS_PROJECT if n not in have]
+        out.append(('ERROR', f'doc_lint 的 NEEDS_PROJECT 里有 {lost}，tools/ 下找不到——'
+                             f'名单过期或工具改名了，先改 tools/doc_lint.py 里这个常量'))
+    if not present:
+        return out
+    runnable = total - len(present)
+
+    targets = list(sorted(DOCS.glob('*.md')))
+    rp = ROOT / 'README.md'
+    if rp.is_file():
+        targets.append(rp)
+    for p in targets:
+        text = p.read_text(encoding='utf-8', errors='replace')
+        for pat, kind in _CNT_PATTERNS:
+            for m in pat.finditer(text):
+                g = [x for x in m.groups() if x]
+                if not g:
+                    continue
+                n, want = int(g[0]), (total if kind == 'total' else runnable)
+                if n != want:
+                    label = '工具总数' if kind == 'total' else '能独立跑的件数'
+                    out.append(('ERROR', f'{p.name} 写{label} {n}，实际 {want}'
+                                         f'（tools/ 共 {total} 个脚本）：改文档，别改这个检查'))
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('-q', '--quiet', action='store_true', help='只报 ERROR')
@@ -536,6 +598,7 @@ def main() -> int:
 
     issues += check_long_lines()
     issues += check_refs()
+    issues += check_counts()
     issues += check_handoff_doc()
     issues += check_skills()
     issues += check_taizhang_note()

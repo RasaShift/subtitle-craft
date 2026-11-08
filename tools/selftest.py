@@ -1235,6 +1235,53 @@ def t_findings2tsv():
     check('findings2tsv/英文轨那条挑出来交人工', '[人工]' in (r.stdout or ''))
 
 
+def t_cross_lib():
+    """跨库用法必须有话说，不许静默通过（2026-11-08 加，`GQ-12` / `GQ-13` / `GQ-18`）。
+
+    三处毛病是同一个形状：**输出是绿的，实际什么都没查**。
+      ① `doc_lint` 没有版本号，拷进老库的副本过期无声，跑出来照样「没有 ERROR」；
+      ② `doc_lint --docs` 指到本库之外原来直接抛 ValueError 崩掉；
+      ③ `eol_guard` 跨库调用时文件全在 ROOT 之外，全部跳过，老版本仍打印「全部一致」、
+         退出码 0 —— 一个没查的文件按「一致」报，人不会怀疑，这条最贵。
+    这三条都得起子进程：验的是退出码和终端输出，不是函数返回值。
+    """
+    import subprocess
+    here = Path(__file__).resolve().parent
+    outside = Path(tempfile.mkdtemp())
+
+    # ① 版本号：常量存在，且输出末尾带出来
+    import doc_lint as dl
+    check('跨库/版本常量存在', bool(getattr(dl, 'VERSION', '')), getattr(dl, 'VERSION', None))
+    r = subprocess.run([sys.executable, str(here / 'doc_lint.py')],
+                       capture_output=True, text=True)
+    out = (r.stdout or '') + (r.stderr or '')
+    check('跨库/doc_lint 输出带版本', f'doc_lint v{dl.VERSION}' in out, out[-120:])
+
+    # ② 指到库外：说人话拒绝、退出码 2，不许把栈甩给用户
+    r = subprocess.run([sys.executable, str(here / 'doc_lint.py'), '--docs', str(outside)],
+                       capture_output=True, text=True)
+    out = (r.stdout or '') + (r.stderr or '')
+    check('跨库/doc_lint 拒绝库外目录（退出码 2）', r.returncode == 2, r.returncode)
+    check('跨库/拒绝时给话说', '本库之外' in out, out[-200:])
+    check('跨库/拒绝时不抛栈', 'Traceback' not in out, out[-200:])
+
+    # ③ eol_guard 一个都没查：退 2，且不许出现「全部一致」
+    (outside / 'a.md').write_text('# 测试\n', encoding='utf-8')
+    r = subprocess.run([sys.executable, str(here / 'eol_guard.py'), '--check', str(outside)],
+                       capture_output=True, text=True)
+    out = (r.stdout or '') + (r.stderr or '')
+    check('跨库/eol_guard 全跳过退 2', r.returncode == 2, r.returncode)
+    check('跨库/eol_guard 不说「一致」', '全部一致' not in out, out[-200:])
+    check('跨库/eol_guard 明说「没查」', '没查' in out, out[-200:])
+
+    # ④ 反过来：本库正常路径不许被这次改动误伤，检查数必须大于 0
+    r = subprocess.run([sys.executable, str(here / 'eol_guard.py'), '--check',
+                        str(here.parent / 'docs')], capture_output=True, text=True)
+    out = (r.stdout or '') + (r.stderr or '')
+    check('跨库/本库正常跑退 0', r.returncode == 0, out[-200:])
+    check('跨库/本库检查数 > 0', '检查 0 个' not in out, out[-200:])
+
+
 def main():
     global VERBOSE
     ap = argparse.ArgumentParser()
@@ -1262,6 +1309,7 @@ def main():
     t_handoff_fresh()
     t_ass_rows()
     t_check_rules()
+    t_cross_lib()
 
     print(f'\n通过 {len(PASS)}，失败 {len(FAIL)}')
     if FAIL:

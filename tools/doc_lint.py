@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# 最近修改：2026-11-05（新建：本库文档体检，去掉了 MOC 与 handoff 两项；同日加「接棒必读 60 行」上限）
+# 最近修改：2026-11-08（加 VERSION：拷贝式分发下必须能自证版本；引用死链在老库语境跳过通用库四层前缀）
 """doc_lint.py -- 文档体检：把「文档该怎么写」从陈述句改成可机检的断言
 
 为什么有它：文档乱掉的共因只有三条——规矩写在被管的文件里、超限没有出口、
@@ -9,6 +9,7 @@
 用法：
     python tools/doc_lint.py          # 全查，退出码 1 = 有 ERROR
     python tools/doc_lint.py -q       # 只报 ERROR
+    python tools/doc_lint.py --docs 06_治理   # 老库：文档目录不叫 docs 时用它指过去
 
 查五类：
   1. 行数超限       —— 每份文档的上限写在 LIMITS 里，和落点表一一对应
@@ -21,12 +22,18 @@
 
 上限从哪来：每个数字都对应一次事故或一条已验证的体量，见 `docs/文档落点表.md`。
 改数字之前先想清楚为什么原来那个不够。
+
+**版本（2026-11-08 加）**：本脚本是「拷进别的库」分发的，副本过期没有任何征兆——
+剧库那份跑得动、报「没有 ERROR」，只是少了一批检查。所以输出末尾带 `vYYYY-MM-DD`，
+两边一对就知道是不是同一版。**改本脚本必须改 VERSION 这一行。**
 """
 import argparse
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+VERSION = '2026-11-08'
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / 'docs'
@@ -383,6 +390,12 @@ def check_refs() -> list:
                 first = ref.split('/')[0]
                 if first and (ROOT.parent / first).is_dir() and first != ROOT.name:
                     continue                      # 指向隔壁库，本库管不着
+                # 2026-11-08 加（GQ-12）：老库（文档目录不叫 docs）里，`docs/` `tools/`
+                # `examples/` `skills/` 开头指的是**通用库的四层**，本库根下当然没有。
+                # 判据用「DOCS 不叫 docs」定语境，**不能看见这四个词就跳**——本库 DOCS
+                # 就叫 docs，那样我自己写错路径也查不出来，等于把闸拆了换安静。
+                if DOCS.name != 'docs' and first in ('docs', 'tools', 'examples', 'skills'):
+                    continue
                 if (ROOT / ref).is_file() or (p.parent / ref).is_file():
                     continue
                 out.append(('WARN', f'{p.relative_to(ROOT).as_posix()} L{i} '
@@ -464,11 +477,21 @@ def main() -> int:
     # 真正会错的是 DOCS 这一级——老库把文档放 `06_治理/`、不叫 `docs/`，于是每项都报
     # 「找不到 docs/X（跳过）」，全绿但一个字没查。--root 解决不了这个，只能 --docs。
     if a.docs:
-        d = Path(a.docs)
+        d = Path(a.docs).resolve()
         if not d.is_dir():
-            print(f'[ERROR] --docs 指的目录不存在：{d.resolve()}')
+            print(f'[ERROR] --docs 指的目录不存在：{d}')
             return 2
-        globals()['DOCS'] = d.resolve()
+        # 2026-11-08 加：ROOT 按脚本位置取，所以本脚本只能查自己所在的库。
+        # 指到库外时原来会在 check_refs 里 `relative_to` 抛 ValueError 崩掉——
+        # 跟 eol_guard 跨库静默全跳过是同一个病（GQ-12/GQ-18）：跨库用法必须有话说。
+        try:
+            d.relative_to(ROOT)
+        except ValueError:
+            print(f'[ERROR] --docs 指到本库之外了：{d}')
+            print(f'本脚本按自身位置定库根（{ROOT}），只能查自己所在的库。')
+            print('要查别的库，把 doc_lint.py 拷进那个库再跑——这也是副本会过期的原因，比对输出里的版本号。')
+            return 2
+        globals()['DOCS'] = d
 
     issues = []
     for name, cfg in LIMITS.items():
@@ -523,13 +546,15 @@ def main() -> int:
     for tag, msg in (err if a.quiet else err + warn):
         print(f'{tag:5} {msg}')
 
+    # 版本一定要打在最后一行：拷贝式分发下，两边对不上就说明有一边该重拷了（GQ-13）
+    ver = f'doc_lint v{VERSION}'
     if err:
-        print(f'\n{len(err)} 个 ERROR、{len(warn)} 个 WARN。ERROR 要当场处理。')
+        print(f'\n{len(err)} 个 ERROR、{len(warn)} 个 WARN。ERROR 要当场处理。〔{ver}〕')
         return 1
     if warn:
-        print(f'\n没有 ERROR；{len(warn)} 个 WARN（看一眼，确认是过程还是结论）。')
+        print(f'\n没有 ERROR；{len(warn)} 个 WARN（看一眼，确认是过程还是结论）。〔{ver}〕')
         return 0
-    print('文档体检通过。')
+    print(f'文档体检通过。〔{ver}〕')
     return 0
 
 

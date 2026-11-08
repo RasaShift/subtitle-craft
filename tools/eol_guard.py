@@ -1,5 +1,5 @@
 # 作者：DeepSeek-V4.1-Flash 2026-11-02
-# 最近修改：DeepSeek-V4.1-Flash 2026-11-02（首版）
+# 最近修改：DeepSeek-V4.1-Flash 2026-11-08（「检查 0 个」不再算通过，退出码 2）
 """
 换行符守护：把「记住要检查」换成「跑一下就报」。
 
@@ -14,6 +14,12 @@
 判法：拿工作区文件的 CRLF 比例与 `git show HEAD:<path>` 比。不一致就是被动过。
 只比换行符，不碰内容；`--fix` 也是逐字节只改 \\r\\n / \\n。
 新文件（git 里没有）、二进制扩展名、未跟踪文件一律跳过。
+
+退出码（2026-11-08 加）：0 = 查过且一致；1 = 有文件被动了；**2 = 一个都没查**。
+为什么单列 2：ROOT 按脚本位置取，拿本脚本去查别的库，文件全在 ROOT 之外，
+`git_show` 一律返回 None → 全部跳过 → 老版本照样打印「全部一致」、返回 0。
+**「检查 0 个」不是「没问题」，是「没查」**，两者不能共用一个退出码。
+正确用法是把本脚本拷进那个库再跑（见 `docs/老库补装清单.md`）。
 """
 import argparse
 import subprocess
@@ -121,6 +127,8 @@ def main() -> int:
         for p, ok, ck in fixed:
             print(f'已还原  {p}  {ck} → {ok}')
         print(f'还原 {len(fixed)} 个，跳过（不在 git/未跟踪）{skipped} 个')
+        if len(fixed) == 0 and skipped:
+            print('一个都没动过——注意：跳过 = 没检查，不等于本来就是对的。')
         return 0
 
     for p, ok, ck, oc, cc in bad:
@@ -129,7 +137,15 @@ def main() -> int:
     if bad:
         print(f'\n{len(bad)} 个文件的换行符被动了。跑 --fix 还原，或改回你的写入方式。')
         return 1
-    print(f'换行符全部一致（检查 {len(collect(a.check)) - skipped} 个，跳过 {skipped} 个）')
+    checked = len(collect(a.check)) - skipped
+    if checked == 0:
+        # 2026-11-08（GQ-18）：这里是「绿的但没查」最典型的样子。老版本会打印
+        # 「全部一致」并返回 0，人不会怀疑。查了 0 个，唯一诚实的结论是「没查」。
+        print(f'跳过 {skipped} 个，检查 0 个——**没查，不是通过**。')
+        print('最常见原因：拿本脚本去查别的库。ROOT 按脚本位置取，库外文件全被跳过；')
+        print('正确做法是把 eol_guard.py 拷进那个库再跑（见 docs/老库补装清单.md）。')
+        return 2
+    print(f'换行符全部一致（检查 {checked} 个，跳过 {skipped} 个）')
     return 0
 
 

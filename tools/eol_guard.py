@@ -89,11 +89,20 @@ def main() -> int:
     if not a.check and not a.fix:
         sys.exit('要么 --check，要么 --fix')
 
-    bad, fixed, skipped = [], [], 0
+    bad, fixed, skipped, outside, newf = [], [], 0, 0, 0
     for p in collect(a.check or a.fix):
         old = git_show(p)
         if old is None:
             skipped += 1
+            # 2026-11-08 修：跳过有两种，后果完全不同。
+            # 库外 = 拿脚本查别的库，那是「没查」（GQ-18）；库内新文件 = git 里
+            # 还没有，没有 HEAD 可比，那是「没得比」，正常。混成一个数会让
+            # pre-commit 钩子给每个新增文件都判红——当天就撞上了。
+            try:
+                p.resolve().relative_to(ROOT)
+                newf += 1
+            except (ValueError, OSError):
+                outside += 1
             continue
         cur = p.read_bytes()
         oc, ol = nl_profile(old)
@@ -138,13 +147,17 @@ def main() -> int:
         print(f'\n{len(bad)} 个文件的换行符被动了。跑 --fix 还原，或改回你的写入方式。')
         return 1
     checked = len(collect(a.check)) - skipped
-    if checked == 0:
+    if checked == 0 and outside:
         # 2026-11-08（GQ-18）：这里是「绿的但没查」最典型的样子。老版本会打印
         # 「全部一致」并返回 0，人不会怀疑。查了 0 个，唯一诚实的结论是「没查」。
-        print(f'跳过 {skipped} 个，检查 0 个——**没查，不是通过**。')
+        print(f'跳过 {skipped} 个（其中库外 {outside} 个），检查 0 个——**没查，不是通过**。')
         print('最常见原因：拿本脚本去查别的库。ROOT 按脚本位置取，库外文件全被跳过；')
         print('正确做法是把 eol_guard.py 拷进那个库再跑（见 docs/老库补装清单.md）。')
         return 2
+    if checked == 0:
+        # 全库内、但都是 git 里还没有的新文件：没得比，不是没查。
+        print(f'跳过 {skipped} 个（新文件，git 里还没提交，无 HEAD 可比），检查 0 个。')
+        return 0
     print(f'换行符全部一致（检查 {checked} 个，跳过 {skipped} 个）')
     return 0
 

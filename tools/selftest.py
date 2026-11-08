@@ -1281,6 +1281,21 @@ def t_cross_lib():
     check('跨库/本库正常跑退 0', r.returncode == 0, out[-200:])
     check('跨库/本库检查数 > 0', '检查 0 个' not in out, out[-200:])
 
+    # ⑤ 本库内的新文件：git 里还没有，没有 HEAD 可比——「没得比」不是「没查」。
+    # 真事故：新文件必然检查 0 个，pre-commit 钩子逐个文件跑，于是每个新增文件
+    # 都被判红，提交直接拦死。跳过要分两种，库外才算没查。
+    fresh = here.parent / 'docs' / '_tmp_eol_newfile.md'
+    fresh.write_text('# 新文件\n', encoding='utf-8')
+    try:
+        r = subprocess.run([sys.executable, str(here / 'eol_guard.py'), '--check', str(fresh)],
+                           capture_output=True, text=True)
+        out = (r.stdout or '') + (r.stderr or '')
+        check('跨库/本库新文件不拦（退 0）', r.returncode == 0, r.returncode)
+        check('跨库/本库新文件说「新文件」', '新文件' in out, out[-120:])
+        check('跨库/本库新文件不说「没查」', '没查' not in out, out[-120:])
+    finally:
+        fresh.unlink()
+
 
 def main():
     global VERBOSE

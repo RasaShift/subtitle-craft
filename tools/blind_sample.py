@@ -9,7 +9,7 @@
 
 口径来源：`05_参考资料/2_给AI看/通读开工方案.md` 5.3 节。
   沿革：E06 后单片提到 10 段 × 10 行；**2026-11-01 降本改为每片 5 段 × 10 行 = 50 行，
-  两片合计 100 行、一个 Agent 跑完**（依据见 `buddy-workflow`「单件成本预算」）。
+  两片合计 100 行、一个 Agent 跑完**（依据见 `agent-craft`「单件成本预算」）。
 
 用法：
   python blind_sample.py --worksheet <剧库>/02_工作区/pilot/<集>/worksheet_01.tsv \

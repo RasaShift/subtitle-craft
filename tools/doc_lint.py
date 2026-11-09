@@ -609,6 +609,40 @@ def check_counts() -> list:
     return out
 
 
+# 库根下的「工具层」：不带编号，给命令敲。另一半是「数据层」：`NN_中文名`，给人翻。
+# 两段的分法见 docs/命名准则.md 第六节，检查在 check_top_dirs。
+TOP_DIR_OK = {'docs', 'tools', 'skills', 'examples'}
+
+
+def check_top_dirs(root: Path = None) -> list:
+    """库根下的每个目录，要么是 `NN_中文名`（给人翻），要么在工具层白名单里（给命令敲）。
+
+    2026-11-09 加。为什么有这条：骨架里 `01_源字幕` 和 `docs/` 并存本来就是**两段**，
+    不是混用；但边界没写成能判的话，每加一个目录都要重开一次讨论——`05_参考资料`
+    该叫什么、该不该叫 04，就是这么争起来的。判据一句话：**这名字会不会出现在命令行里**。
+
+    **不查编号连续性**：日常杂活 `03` 用了两次（`03_工作区` / `03_成品`），查了就是
+    给别人的库报噪音。假 WARN 比漏报更伤——报一次没人看，闸就废了。
+    也不查顺序号对不对：`05_参考资料` 中间空着 `04`（工具位），那是刻意的。
+    """
+    r = root or ROOT
+    out = []
+    if not r.is_dir():
+        return out
+    for d in sorted(r.iterdir()):
+        if not d.is_dir() or d.name[0] in '._':
+            continue                      # `.git` / `_tmp` 不是内容，不归这条管
+        if d.name in TOP_DIR_OK:
+            continue
+        # 数字前缀 + 中文名：`01_源字幕`、`05_参考资料`。数字两位是排序需要，不是分类编号。
+        if re.fullmatch(r'\d{2}_[^\x00-\x7f].*', d.name):
+            continue
+        out.append(('WARN', f'顶层目录 {d.name}/ 既不是「NN_中文名」（给人翻），也不在 '
+                            f'{" / ".join(sorted(TOP_DIR_OK))} 里（给命令敲）——'
+                            f'先定它属于哪段，名字照那段的规矩起（见 docs/命名准则.md 第六节）'))
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('-q', '--quiet', action='store_true', help='只报 ERROR')
@@ -695,6 +729,7 @@ def main() -> int:
     issues += check_skill_scripts()
     issues += check_memory()
     issues += check_archive()
+    issues += check_top_dirs()
 
     err = [x for x in issues if x[0] == 'ERROR']
     warn = [x for x in issues if x[0] == 'WARN']

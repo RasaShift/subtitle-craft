@@ -1431,6 +1431,36 @@ def t_counts():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def t_top_dirs():
+    """库根目录的命名：带编号用中文（给人翻），不带编号走白名单（给命令敲）。
+
+    2026-11-09 加。为什么有这条：骨架里两段并存本来不是混用，但边界没写成能判的话，
+    每加一个目录就要重开一次讨论（`05_参考资料` 该叫 04 还是 05 就是这么争起来的）。
+    三条断言的三个方向：合规的不报、四不像的报、带编号但用英文的也报。
+    """
+    import shutil
+    import doc_lint as dl
+
+    d = Path(tempfile.mkdtemp())
+    try:
+        for n in ('01_源字幕', '05_参考资料', 'docs', 'tools', '.git', '_tmp'):
+            (d / n).mkdir()
+        check('顶层目录/编号与白名单都不报', dl.check_top_dirs(d) == [], dl.check_top_dirs(d))
+
+        (d / 'notes').mkdir()
+        got = dl.check_top_dirs(d)
+        check('顶层目录/四不像的报 WARN',
+              len(got) == 1 and got[0][0] == 'WARN' and 'notes' in got[0][1], got)
+
+        (d / 'notes').rmdir()
+        (d / '01_source').mkdir()        # 带编号却是英文：数据层是给人翻的，要中文
+        got = dl.check_top_dirs(d)
+        check('顶层目录/编号后跟英文也报',
+              len(got) == 1 and '01_source' in got[0][1], got)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
     global VERBOSE
     ap = argparse.ArgumentParser()
@@ -1461,6 +1491,7 @@ def main():
     t_cross_lib()
     t_gen_progress()
     t_counts()
+    t_top_dirs()
 
     print(f'\n通过 {len(PASS)}，失败 {len(FAIL)}')
     if FAIL:

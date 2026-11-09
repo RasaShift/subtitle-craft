@@ -35,7 +35,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = '2026-11-08T2130'
+VERSION = '2026-11-09T1120'
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / 'docs'
@@ -53,6 +53,9 @@ LIMITS = {
     '接棒必读.md':   {'lines': 60,  'entry': 0},
     '流程总图.md':   {'lines': 100, 'entry': 0},   # 清单型：步骤与接口，长了是步骤多了
     '命名准则.md':   {'lines': 60,  'entry': 0},   # 规则型：只放骨架，例子在各自文档
+    # 术语表按稳定型管：只收「被用错过的词」，不该无限长。100 的出处见落点表——
+    # 现有 4 条实测 37 行，留一倍余量给下一个出事的词。满了删词，不拆表。
+    'GLOSSARY.md':   {'lines': 100, 'entry': 0},
     # 2026-11-08 由 200 降到 135：长度**不跟 GQ 条数走，跟病根数走**——那天 18 条
     # GQ 只有 2 个病根，按条写 100 行，按病根 25 行就够。判词正文进
     # `docs/archive/答复_YYYYMM.md`，前台只留「病根 + 判法 + 登记表」；广播同理。

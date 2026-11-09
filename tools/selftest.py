@@ -1396,6 +1396,24 @@ def t_counts():
                                        encoding='utf-8')
         check('件数/分项数不误报', not errs(), errs())
 
+        # 表格写法：`| 通用工具 | **30 件**：… |`，加粗 + 紧跟冒号。
+        # 2026-11-09 加（`#46`）：原来四条规则都要求「N 件」后面跟「工具 / 脚本」，
+        # 表格里隔着 ` | **` 就一条也匹配不上——接棒必读:17 那处从没被核过。
+        (tmp / '坏表格.md').write_text(
+            f'| 通用工具 | **{total + 1} 件**：11 件主用 + 6 件工程件 |\n',
+            encoding='utf-8')
+        check('件数/表格写法写错报 ERROR',
+              any(f'工具总数 {total + 1}' in m for m in errs()), errs())
+
+        (tmp / '坏表格.md').write_text(
+            f'| 通用工具 | **{total} 件**：11 件主用 + 6 件工程件 |\n',
+            encoding='utf-8')
+        check('件数/表格写法写对了不报', not errs(), errs())
+
+        # 加粗的分项（不带冒号）是在分类，不是报总数，不许被抓
+        (tmp / '坏表格.md').write_text('| 分项 | **11 件** 主用 |\n', encoding='utf-8')
+        check('件数/加粗分项不误报', not errs(), errs())
+
         # 老库语境（文档目录不叫 docs、工具在 `04_工具/`）：没有 `tools/` 是布局不同，
         # 不是缺件。报出来就是给老库制造假警——剧库刚把 WARN 从 23 压到 7。
         old_root = dl.ROOT

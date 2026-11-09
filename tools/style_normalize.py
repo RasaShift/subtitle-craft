@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# 最近修改：2026-11-07（换行符改在解码后的文本上判——UTF-16 的 CRLF 在字节层匹配不到）
+# 最近修改：2026-11-09（MF8 底纹条删除落地，`--f8`，默认关）
 """style_normalize.py -- 文件层样式规范化：头部与样式表换成基准，坐标按比例换算
 
 为什么有它：文本层有 `land_verify.py` 管「只改该改的字」，文件层一直没有工具——
 画布比例错了、样式表几套面孔、字号写法不一，只能手改，而手改整片会错位。
 判据在 `docs/工序-清稿-规则清单.md`（MF1–MF8）。本脚本只做能写成断言的那几条。
 
-做（F1–F6）：
+做（F1–F6、F8）：
   · `[Script Info]` 整段换成基准的（画布比例、WrapStyle、ScaledBorderAndShadow 一起统一）
   · `[V4+ Styles]` 整段换成基准的样式表（字体、字号、颜色、描边、边距）
   · Dialogue 里的 `\\pos \\move \\org \\clip \\iclip` 坐标按轴换算，
     `\\fs \\fsp \\bord \\xbord \\ybord \\shad \\xshad \\yshad \\blur` 按轴换算
   · 编码 / BOM / 换行符默认保持原样（显式 `--encoding` 才改）
   · F6 内联标签统一成 `{\\rX}`，但必须显式给 `--f6`——不给开关一个标签都不动
+  · F8 底纹条（署名块的黑底）整条删，同样要显式给 `--f8`；判据见下方 MF8 一段
 不做（会打印出来，别当成做了）：
-  · F8 底纹条删除——要判断，本版只报数
   · 矢量裁切 `\\clip(m ...)` 不动，逐条报出来
 
 关于画布比例（2026-11-05 定，2026-11-08 补尺度）：
@@ -30,12 +30,13 @@
 用法：
     python style_normalize.py check  <文件或目录...> [--video 1920x1080] [--base 基准.ass]
     python style_normalize.py apply  <目标.ass> --base 基准.ass [-o 输出] [--dry-run]
-                                     [--from-res 384x288] [--style-map 旧名=新名]
-    python style_normalize.py verify <改前> <改后> <基准.ass> [--video WxH] [--from-res WxH]
+                                     [--from-res 384x288] [--style-map 旧名=新名] [--f6] [--f8]
+    python style_normalize.py verify <改前> <改后> <基准.ass> [--video WxH] [--from-res WxH] [--f6] [--f8]
 
-两个显式开关，都是「不许工具自己猜」的地方：
+四个显式开关，都是「不许工具自己猜」的地方：
   --from-res   原文件 PlayRes 是 0×0 时（旧片源常见），声明它原本按哪个坐标系排的
   --style-map  换样式表要同时改引用；旧样式名对不上基准时，显式给出对应关系
+  --f6 / --f8  要删东西的规则（换标签、删条），不给开关就一条都不动——删错了撤不回
 
 退出码：0 成功 / 1 复算不过 / 2 参数或输入错 / 3 dry-run 无可改项
 """
@@ -280,6 +281,51 @@ def mf6(text, name='English'):
     return F6_SEQ.sub(one, text), swapped, holds
 
 
+# ---------------------------------------------------------------- MF8 底纹条删除
+# 判据全文见 docs/工序-清稿-规则清单.md「MF8 具体怎么删」。两条同时成立才删：
+# ① 可见字符只剩方块字符；② 同一起始时间还有别的 Dialogue 行、且那行可见字符非空。
+# 第②条**不是**规则清单原来写的「同刻有署名行被删」——那是事后视角（删署名行时顺手删了它），
+# 工具运行时看不到「将被删」，只能看当前文件。实测旧库 49 条里 41 条满足「同刻有署名行」，
+# 换成「同刻有别的行」后 49/49 全部成立、0 条孤单（2026-11-09，法医 S01–S08 原稿 96 份）。
+def mf8_scan(lines):
+    """[(行号, 条序, 起始时间, 可见文本)]——MF8 与复算共用这一份原料。
+
+    条序按 Dialogue 出现顺序，与 `cue_map` 的键一致；两边各算一遍会走岔。
+    """
+    out, n = [], 0
+    for i, kind, f in events_of(lines):
+        if kind != 'Dialogue':
+            continue
+        n += 1
+        out.append((i, n, f[1].strip() if len(f) > 1 else '',
+                    visible(f[9] if len(f) > 9 else '').strip()))
+    return out
+
+
+def mf8_pick(lines):
+    """该删哪些条。返回 (行号集合, 条序集合, 统计)。
+
+    统计里 `孤单未删` 是第②条挡下来的——正文里孤立的方块行（没别的行陪着）
+    删了就是凭空少一句，宁可留着让人看。
+    """
+    rows = mf8_scan(lines)
+    live = {}
+    for _, _, t, v in rows:
+        if v:
+            live[t] = live.get(t, 0) + 1
+    idx, cues, cand, alone = set(), set(), 0, 0
+    for i, n, t, v in rows:
+        if not v or not BLOCKY.match(v):
+            continue
+        cand += 1
+        if live.get(t, 0) - 1 <= 0:          # 同刻除了它自己，没有别的非空行
+            alone += 1
+            continue
+        idx.add(i)
+        cues.add(n)
+    return idx, cues, {'候选': cand, '删': len(idx), '孤单未删': alone}
+
+
 def tag_values(text):
     """独立解析：[(标签名, 数值列表)]。复算用它比，不复用 scale_tags——不能自己验自己。"""
     out = []
@@ -294,7 +340,7 @@ def tag_values(text):
     return out
 
 
-def apply_file(src, base, encoding=None, from_res=None, style_map=None, f6=False):
+def apply_file(src, base, encoding=None, from_res=None, style_map=None, f6=False, f8=False):
     """算出新文件的行列表。不落盘。返回 (lines, 统计, 警告, 源信息)。
 
     style_map：「旧样式名 → 基准里的样式名」。换样式表必须同时改引用，
@@ -348,6 +394,8 @@ def apply_file(src, base, encoding=None, from_res=None, style_map=None, f6=False
                   f'{{\\r{f6_name}}} 播放时会静默回落 Default。'
                   f'先给基准补一条英文样式，或用 --style-map English=基准里的英文样式名 指明')
 
+    mf8_del, _mf8_cues, mf8_st = mf8_pick(sl) if f8 else (set(), set(), {})
+
     out, moved_tags, skipped, moved_events = [], 0, 0, 0
     f6_done, f6_hold = 0, {}
     for i, ln in enumerate(sl):
@@ -368,6 +416,8 @@ def apply_file(src, base, encoding=None, from_res=None, style_map=None, f6=False
         if m != 'Dialogue':
             out.append(ln)                       # 其它行一个字节不动
             continue
+        if i in mf8_del:
+            continue                             # MF8：整条删掉（判据见 mf8_pick）
         parts = ln.split(',', 9)
         if len(parts) < 10:
             warn.append(f'第 {i + 1} 行 Dialogue 字段不足 10 段，原样保留：{ln[:40]}')
@@ -410,6 +460,10 @@ def apply_file(src, base, encoding=None, from_res=None, style_map=None, f6=False
     st = {'画布': f'{w0}×{h0} → {w1}×{h1}', '换算': f'x×{fmt(sx)} y×{fmt(sy)}',
           'Dialogue': moved_events, '标签': moved_tags, '样式': len(base_names),
           '矢量裁切未动': skipped, '编码': encoding or src_d['enc']}
+    if f8:
+        st['MF8'] = f'删 {mf8_st.get("删", 0)} 条'
+        if mf8_st.get('孤单未删'):
+            st['MF8 未删'] = f'{mf8_st["孤单未删"]} 条是孤立方块行'
     if f6:
         st['MF6'] = f'换 {f6_done} 处'
         if f6_hold:
@@ -460,7 +514,7 @@ def cue_map(lines):
     return out
 
 
-def verify(before, after, base, video=None, from_res=None, f6=False):
+def verify(before, after, base, video=None, from_res=None, f6=False, f8=False):
     """七条判据。期望值从「改前 + 基准比例」独立重算，不看 apply 怎么算的。"""
     bd, ad, xd = decode_of(before), decode_of(after), decode_of(base)
     bl, al, xl = bd['lines'], ad['lines'], xd['lines']
@@ -494,6 +548,13 @@ def verify(before, after, base, video=None, from_res=None, f6=False):
 
     # ② 条数与可见文本：正文一字未动
     bc, ac = cue_map(bl), cue_map(al)
+    if f8:
+        # MF8 本来就要整条删掉底纹条，期望值先把改前按同一判据折一遍、再重编条序；
+        # 不折就会一律报「条数变了」——与 MF6 折改前同理。这不会变成「自己验自己」：
+        # 删多了、删错了、该删的没删，折完的条数或逐条正文照样对不上，一样红。
+        _i8, exp8, _s8 = mf8_pick(bl)
+        keep = [(n, v) for n, v in sorted(bc.items()) if n not in exp8]
+        bc = {i: v for i, (_n, v) in enumerate(keep, 1)}
     if len(bc) != len(ac):
         issues.append(f'Dialogue 条数变了：{len(bc)} → {len(ac)}')
     else:
@@ -611,7 +672,8 @@ def check(path, video=None, base=None):
     if refs:
         notes.append(f'引用了没声明的样式 {sorted(refs)}：播放时静默回落 Default，不报错')
     if bar:
-        notes.append(f'{bar} 条疑似底纹条（可见字符只剩方块字符）——F8，本版只报不删')
+        notes.append(f'{bar} 条疑似底纹条（可见字符只剩方块字符）——F8，'
+                     f'加 --f8 才删；这里只是候选数，同刻没有别的行的那几条不会被删')
     if inline_lines:
         notes.append(f'{inline_lines} 条带内联标签（{inline_n} 处）——F6 统一成 {{\\rX}} 要判断，本版只报')
     if base:
@@ -724,6 +786,8 @@ def main():
     a.add_argument('--dry-run', action='store_true')
     a.add_argument('--f6', action='store_true',
                    help='MF6：把「\\N + 一串样式参数 + 英文」换成 \\N{\\rEnglish}（需要基准里有 English 样式）')
+    a.add_argument('--f8', action='store_true',
+                   help='MF8：删底纹条（可见字符只剩方块、且同刻还有别的非空行）。不给就不删')
     b = sub.add_parser('base', help='按视频分辨率生成一份基准（从现成基准换算）')
     b.add_argument('src', help='源基准 .ass')
     b.add_argument('--video', required=True, help='目标分辨率，如 1440x1080')
@@ -735,6 +799,7 @@ def main():
     v.add_argument('--video')
     v.add_argument('--from-res')
     v.add_argument('--f6', action='store_true', help='复算时按 MF6 折一遍改前，别按「标签数变少」报红')
+    v.add_argument('--f8', action='store_true', help='复算时按 MF8 折一遍改前，别按「条数变少」报红')
     args = ap.parse_args()
 
     if args.cmd == 'base':
@@ -779,7 +844,8 @@ def main():
 
     if args.cmd == 'verify':
         issues, st = verify(Path(args.before), Path(args.after), Path(args.base),
-                            parse_video(args.video), parse_video(args.from_res), f6=args.f6)
+                            parse_video(args.video), parse_video(args.from_res),
+                            f6=args.f6, f8=args.f8)
         print(f'复算：条数 {st["条数"]} / 正文变 {st["正文变"]} / 标签不符 {st["标签不符"]}')
         for x in issues:
             print('  ERROR', x)
@@ -789,13 +855,16 @@ def main():
     try:
         out, st, warn, src_d = apply_file(src, base, args.encoding,
                                           parse_video(args.from_res), parse_map(args.style_map),
-                                          f6=args.f6)
+                                          f6=args.f6, f8=args.f8)
     except Bad as e:
         sys.exit(f'拒绝执行：{e}')
     for w in warn:
         print('  WARN', w)
     print(f'落地：{st["画布"]}（{st["换算"]}）· Dialogue {st["Dialogue"]} 条 · '
           f'标签 {st["标签"]} 处 · 样式 {st["样式"]} 条 · 编码 {st["编码"]}')
+    if st.get('MF8'):
+        print(f'  MF8：{st["MF8"]}'
+              + (f'；未删 {st["MF8 未删"]}' if st.get('MF8 未删') else ''))
     if st.get('MF6'):
         print(f'  MF6：{st["MF6"]}'
               + (f'；未换 {st["MF6 未换"]}' if st.get('MF6 未换') else ''))
@@ -807,7 +876,7 @@ def main():
     dst = Path(args.out) if args.out else src.with_suffix('.norm' + src.suffix)
     write_out(out, src_d, dst, args.encoding)
     issues, st2 = verify(src, dst, base, parse_video(args.video), parse_video(args.from_res),
-                         f6=args.f6)
+                         f6=args.f6, f8=args.f8)
     print(f'复算：条数 {st2["条数"]} / 正文变 {st2["正文变"]} / 标签不符 {st2["标签不符"]}')
     for x in issues:
         print('  ERROR', x)

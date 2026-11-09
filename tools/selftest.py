@@ -628,7 +628,7 @@ def t_style():
     except sn.Bad:
         check('样式/MF6 基准没有英文样式就拒绝', True)
 
-    # 底纹条判据（F8 只报不删，但报得对不对要验）：可见字符只剩方块字符才算
+    # 底纹条形态（MF8 的第一条判据，报得对不对要验）：可见字符只剩方块字符才算
     check('样式/底纹条候选认得出', bool(sn.BLOCKY.match('■■■')), '方块条没认出来')
     check('样式/正常台词不算底纹条', not sn.BLOCKY.match('这是正常台词'), '把正常台词判成底纹条')
 
@@ -1461,6 +1461,62 @@ def t_top_dirs():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def t_mf8():
+    r"""MF8 底纹条删除：只删「方块 + 同刻有别的行」，默认不删，复算要按同一判据折改前。
+
+    2026-11-09 加。为什么有这条：判据原来是「同刻有署名行被删」，那是事后视角
+    （删署名行时顺手删了它），工具运行时看不到「将被删」。实测旧库 49 条里只有 41 条
+    满足，改成「同刻有别的非空行」后 49/49 成立。四条断言的四个方向：
+    默认不删、给了开关只删该删的、孤立方块行不删、复算不折算就报红。
+    """
+    base = ('[Script Info]\nScriptType: v4.00+\nPlayResX: 1440\nPlayResY: 1080\n\n'
+            '[V4+ Styles]\n'
+            'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, '
+            'BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, '
+            'BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n'
+            'Style: Default,字体A,79,&H00FFFFFF,&H00000000,&H006C3300,&H00000000,-1,0,0,0,'
+            '100,100,0,0,1,8,4,2,19,19,19,1\n\n'
+            '[Events]\nFormat: Layer, Start, End, Style, Actor, MarginL, MarginR, MarginV, Effect, Text\n')
+    bar = 'Dialogue: 0,0:00:20.00,0:00:22.00,Default,,0,0,0,,{\\an2\\alpha&H9F&\\c&H000000&\\fscx600}■\n'
+    src = ('[Script Info]\nScriptType: v4.00+\nPlayResX: 384\nPlayResY: 288\n\n'
+           '[V4+ Styles]\n'
+           'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, '
+           'BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, '
+           'BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n'
+           'Style: Default,字体B,21,&H00FFFFFF,&H00000000,&H006C3300,&H00000000,-1,0,0,0,'
+           '100,100,0,0,1,2,1,2,5,5,5,1\n\n'
+           '[Events]\nFormat: Layer, Start, End, Style, Actor, MarginL, MarginR, MarginV, Effect, Text\n'
+           + bar +
+           'Dialogue: 0,0:00:20.00,0:00:22.00,Default,,0,0,0,,字幕由人人影视提供\n'
+           'Dialogue: 0,0:00:30.00,0:00:32.00,Default,,0,0,0,,■\n'          # 孤立方块行：同刻没别人
+           'Dialogue: 0,0:00:40.00,0:00:42.00,Default,,0,0,0,,正文一句\n')
+
+    d = Path(tempfile.mkdtemp())
+    bp, sp = d / 'base.ass', d / 'src.ass'
+    bp.write_bytes(base.encode('utf-8'))
+    sp.write_bytes(src.encode('utf-8'))
+
+    out0, st0, _w0, _d0 = sn.apply_file(sp, bp)
+    check('MF8/默认不删',
+          sum(1 for ln in out0 if ln.lower().startswith('dialogue:')) == 4,
+          f'不给 --f8 却少了条：{[ln[:20] for ln in out0 if ln.lower().startswith("dialogue:")]}')
+
+    out1, st1, _w1, d1 = sn.apply_file(sp, bp, f8=True)
+    dls = [ln for ln in out1 if ln.lower().startswith('dialogue:')]
+    check('MF8/给了开关只删该删的', len(dls) == 3 and st1.get('MF8') == '删 1 条', st1.get('MF8'))
+    check('MF8/孤立方块行不删', any('■' == sn.visible(ln.split(',', 9)[9]).strip()
+                                   for ln in dls), '孤立方块行被删了——同刻没别的行陪着')
+    check('MF8/署名行不动', any('字幕由人人影视提供' in ln for ln in dls), '把正文删了')
+
+    dp = d / 'dst.ass'
+    sn.write_out(out1, d1, dp, None)
+    issues, st2 = sn.verify(sp, dp, bp, (1440, 1080), f8=True)
+    check('MF8/开 f8 复算通过', not issues, issues)
+    # 反向：不折改前就该报「条数变了」——证明折算是必要的，不是把检查弄松了
+    issues0, _s0 = sn.verify(sp, dp, bp, (1440, 1080))
+    check('MF8/不折改前必须报红', any('条数变了' in x for x in issues0), issues0)
+
+
 def main():
     global VERBOSE
     ap = argparse.ArgumentParser()
@@ -1481,6 +1537,7 @@ def main():
     t_base()
     t_base_make()
     t_style()
+    t_mf8()
     t_terms()
     t_text_scan()
     t_scaffold()

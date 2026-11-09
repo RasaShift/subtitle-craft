@@ -131,7 +131,7 @@ def copy_skills(dst: Path, force: bool):
 def main() -> int:
     ap = argparse.ArgumentParser(description='把文档骨架展开成一个新库')
     ap.add_argument('target', help='新库目录（不存在就建）')
-    ap.add_argument('--name', help='库名，写进 README 与接棒必读；默认用目录名')
+    ap.add_argument('--name', help='库名，写进 README 与台账的「现在到哪」段；默认用目录名')
     ap.add_argument('--with-skills', action='store_true',
                     help='连技能一块建：4 份 SKILL.md + 工序文档（判据 + 手册）+ 命名准则 + 判据表 / 判断纪律 / findings写法 / 中间产物格式（不含实证）')
     ap.add_argument('--force', action='store_true', help='覆盖已存在的文件（危险，先看清楚）')
@@ -203,7 +203,9 @@ def main() -> int:
             print(f'    {l}')
         if len(warns) > 12:
             print(f'    ……还有 {len(warns) - 12} 条')
-        # 骨架只带六份「每个库都必须有」的：接棒必读 / 待办台账 / 台账详情 / 判定记录 / 落点表 / 进度台账。
+        # 骨架只带五份「每个库都必须有」的：待办台账 / 台账详情 / 判定记录 / 落点表 / 进度台账。
+        # 2026-11-09：`接棒必读.md` 已从骨架撤掉（本库先解散的）——状态改由台账的
+        # 「现在到哪」段承担，同一份文件里，待办和状态不可能互相落后。
         # `做法` 只带一、二节（七条常驻原则 + 三级阶梯）：「跟隔壁库差什么」那节是通用库
         # 自己的账，新库没有「隔壁」。2026-11-08 由「不带」改成「带通用部分」——剧库第一棒
         # 报 GQ-4：三级阶梯在新库里读不到，同一个坑记到第五次还只是「记」。
@@ -218,7 +220,7 @@ def main() -> int:
 
     print('\n还要手工做两件（脚本不替你做，它们改的是你的机器或仓库）：')
     print(f'  cd {dst} && git init && git config core.hooksPath .githooks')
-    print('  然后照 docs/接棒必读.md 的「第一件事」开工')
+    print('  然后填 docs/待办台账.md 的「现在到哪」段，再按那里的第一条开工')
     return 0
 
 

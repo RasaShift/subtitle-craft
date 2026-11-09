@@ -735,6 +735,21 @@ def t_handoff_fresh():
         res = dl.check_handoff_doc()
         check('接棒/未提交改动要提醒',
               any('未提交的改动' in m for t, m in res), res)
+
+        # ④ 新形态（11-09 起）：没有接棒必读，状态在台账「现在到哪」段 → 通过
+        (docs / '接棒必读.md').unlink()
+        p.write_text(p.read_text(encoding='utf-8') + '\n## 现在到哪\n', encoding='utf-8')
+        git('add', '-A')
+        git('commit', '-q', '-m', 'new-shape')
+        res = dl.check_handoff_doc()
+        check('交接/新形态（台账里有「现在到哪」）通过', not res, res)
+
+        # ⑤ 两样都没有：必须报，别安静通过——那才是交接真没入口
+        p.write_text(p.read_text(encoding='utf-8').replace('## 现在到哪\n', ''),
+                     encoding='utf-8')
+        res = dl.check_handoff_doc()
+        check('交接/两种入口都没有要报',
+              any('现在到哪' in m for t, m in res), res)
     finally:
         dl.DOCS, dl.ROOT = old_docs, old_root
 
@@ -755,13 +770,19 @@ def t_scaffold():
                        capture_output=True, text=True)
     out = (r.stdout or '') + (r.stderr or '')
     check('骨架/建库退出码 0', r.returncode == 0, out[-200:])
-    for rel in ('docs/接棒必读.md', 'docs/待办台账.md', 'docs/判定记录.md',
+    for rel in ('docs/待办台账.md', 'docs/判定记录.md',
                 'docs/文档落点表.md', 'README.md', '.gitattributes',
                 '.githooks/pre-commit', 'tools/doc_lint.py', 'tools/eol_guard.py'):
         check(f'骨架/有 {rel}', (d / rel).is_file())
-    txt = (d / 'docs' / '接棒必读.md').read_text(encoding='utf-8')
-    check('骨架/占位符替换干净', '{{' not in txt, txt[:60])
+    check('骨架/不带接棒必读', not (d / 'docs' / '接棒必读.md').exists(),
+          '11-09 解散后骨架也不该带——状态归台账「现在到哪」段')
+    txt = (d / 'docs' / '待办台账.md').read_text(encoding='utf-8')
+    allmd = [p.read_text(encoding='utf-8') for p in (d / 'docs').rglob('*.md')]
+    allmd.append((d / 'README.md').read_text(encoding='utf-8'))
+    left = [s for s in allmd if '{{' in s]
+    check('骨架/占位符替换干净', not left, (left[0][:80] if left else ''))
     check('骨架/日期是今天', datetime.date.today().isoformat() in txt)
+    check('骨架/库名写进台账', '测试库' in txt)
     check('骨架/库名写进 README', '测试库' in (d / 'README.md').read_text(encoding='utf-8'))
 
     # 撞名不许覆盖：骨架是模板，不是「同步器」

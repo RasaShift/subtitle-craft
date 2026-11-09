@@ -35,7 +35,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = '2026-11-09T1128'
+VERSION = '2026-11-09T1517'
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / 'docs'

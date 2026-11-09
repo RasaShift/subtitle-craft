@@ -754,6 +754,65 @@ def t_handoff_fresh():
         dl.DOCS, dl.ROOT = old_docs, old_root
 
 
+def t_skill_links():
+    """本库 skills/ 与全局技能目录的对应检查（2026-11-09 加）。
+
+    为什么有这条：那天同一类错犯了两回——说删的技能没删（全局实目录还在）、
+    删掉的技能在全局留成死链，都是 `ls -ld` 才发现的。**删文件有 git 记着，
+    删链接没有。** 这条检查跑在本库是 0 条（状态正好），所以必须造场景撞一次，
+    否则「0 条」说明不了它会报。
+    """
+    import doc_lint as dl
+    d = Path(tempfile.mkdtemp())
+    (d / 'skills' / 's1').mkdir(parents=True)
+    (d / 'skills' / 's1' / 'SKILL.md').write_text('x', encoding='utf-8')
+    g = d / 'global'
+    g.mkdir()
+
+    old_root, old_g = dl.ROOT, dl.GLOBAL_SKILLS
+    dl.ROOT = d
+    try:
+        # ① 全局技能目录不存在：跳过，不许报（换台机器、CI 都是这种）
+        dl.GLOBAL_SKILLS = d / '没有这个目录'
+        check('技能链接/全局目录不存在时跳过', dl.check_skill_links() == [],
+              dl.check_skill_links())
+
+        dl.GLOBAL_SKILLS = g
+        # ② 库里有、全局没有 → WARN（只在通用库能用）
+        res = dl.check_skill_links()
+        check('技能链接/库里有全局没有要报',
+              any(t == 'WARN' and '只在通用库' in m for t, m in res), res)
+
+        # ③ 全局是实目录、库里也有一份 → WARN（同名两份，改哪份生效说不清）
+        (g / 's1').mkdir()
+        res = dl.check_skill_links()
+        check('技能链接/全局实目录同名要报',
+              any(t == 'WARN' and '实目录' in m for t, m in res), res)
+
+        # ④ 死链 → ERROR。本机建不出 symlink（无开发者模式），用 junction：
+        #    先建再删目标，就得到一条指向不存在目标的链接——2026-11-09 手工这样验过。
+        (g / 's1').rmdir()
+        made = False
+        try:
+            import subprocess
+            (g / 'tgt').mkdir()
+            r = subprocess.run(['cmd', '/c', 'mklink', '/J',
+                                str(g / 'gone'), str(g / 'tgt')], capture_output=True)
+            if r.returncode == 0:
+                (g / 'tgt').rmdir()          # 目标没了，link 成死链
+                made = True
+        except OSError:
+            pass
+        if not made:
+            check('技能链接/死链报 ERROR（本机建不出链接，跳过）', True)
+        else:
+            res = dl.check_skill_links()
+            check('技能链接/死链报 ERROR',
+                  any(t == 'ERROR' and '死链' in m for t, m in res), res)
+    finally:
+        dl.ROOT, dl.GLOBAL_SKILLS = old_root, old_g
+
+
 def t_scaffold():
     """骨架脚手架：建出来必须是个能过体检的库，而且不许覆盖别人的文件。
 
@@ -1563,6 +1622,7 @@ def main():
     t_text_scan()
     t_scaffold()
     t_doclint_skills()
+    t_skill_links()
     t_handoff_fresh()
     t_ass_rows()
     t_check_rules()

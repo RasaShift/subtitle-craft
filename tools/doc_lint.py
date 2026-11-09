@@ -35,7 +35,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = '2026-11-09T2357'
+VERSION = '2026-11-10T0002'
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / 'docs'
@@ -291,6 +291,64 @@ def is_ancestor(a: str, b: str) -> bool:
         return r.returncode == 0
     except (FileNotFoundError, OSError):
         return False
+
+
+GLOBAL_SKILLS = Path.home() / '.workbuddy' / 'skills'
+
+
+def _is_dir_link(p: Path) -> bool:
+    """符号链接或 Windows 目录联接（junction）。`is_junction` 要 3.12+，低版本退成 False。"""
+    if p.is_symlink():
+        return True
+    try:
+        return p.is_junction()
+    except AttributeError:
+        return False
+
+
+def check_skill_links() -> list:
+    """本库 skills/ 与全局技能目录的对应：死链、同名两份、没装。
+
+    2026-11-09 加。那天同一类错犯了两回：上午日志写「删 `domain-modeling`」其实
+    没删（全局实目录一直在），下午 `git rm` 删了 `buddy-workflow` 却把全局那个
+    目录联接留成死链——到晚上 `ls -ld` 才发现。**删文件有 git 记着，删链接没有。**
+
+    只在全局技能目录存在时跑：换台机器、CI、别人 clone 下来都没有那个目录，
+    那不是问题。三类判定——
+      · 链接指向的目标不在了 → ERROR（技能四个库全失效，而且不会报错）
+      · 全局是实目录、库里也有一份 → WARN（同名两份，改哪份生效说不清）
+      · 库里有、全局没有 → WARN（只在通用库能用，别的库敲不出来）
+
+    死链不能靠 `e.is_dir()` 过滤：悬空的链接它返回 False，正好把要报的那类跳过去。
+    """
+    g = GLOBAL_SKILLS
+    if not g.is_dir():
+        return []
+    out = []
+    for e in sorted(g.iterdir()):
+        try:
+            link = _is_dir_link(e)
+        except OSError:
+            continue
+        if not link and not e.is_dir():
+            continue                    # 普通文件，不管
+        if link:
+            try:
+                target = e.resolve()
+            except OSError:
+                continue
+            if not target.exists():
+                out.append(('ERROR', f'全局技能 {e.name} 是死链，指向已不存在的 {target}'
+                                     f'——技能在四个库里全部失效，且不会报错'))
+        elif (ROOT / 'skills' / e.name / 'SKILL.md').is_file():
+            out.append(('WARN', f'全局 {e.name} 是实目录，本库也有一份同名技能'
+                                 f'——两份会各自漂移，要么删一份，要么改成目录联接'))
+    for d in sorted((ROOT / 'skills').glob('*/SKILL.md')):
+        name = d.parent.name
+        if not (g / name).exists():
+            out.append(('WARN', f'skills/{name} 只在通用库，全局没有入口'
+                                 f'——别的库敲不出这个技能'))
+    return out
 
 
 UPDATED = re.compile(r'最后更新[：:]\s*(\d{4}-\d{2}-\d{2})')
@@ -744,6 +802,7 @@ def main() -> int:
     issues += check_progress_head()
     issues += check_handoff_doc()
     issues += check_skills()
+    issues += check_skill_links()
     issues += check_taizhang_note()
     issues += check_skill_scripts()
     issues += check_memory()
@@ -754,6 +813,27 @@ def main() -> int:
     warn = [x for x in issues if x[0] == 'WARN']
     for tag, msg in (err if a.quiet else err + warn):
         print(f'{tag:5} {msg}')
+
+    # 余额（2026-11-09 加）：上限只在超了才喊，写的时候不知道还剩几行——
+    # 那天 `wc` 被敲了 37 次、临时 python 脚本 80 多个，大半在数这个。
+    # 剩余 ≤10 行就列出来。**不进 issues**：它是行情不是问题，不影响退出码。
+    if not a.quiet:
+        tight = []
+        for name, cfg in LIMITS.items():
+            if not cfg.get('lines'):
+                continue
+            p = DOCS / name
+            if not p.is_file():
+                continue
+            try:
+                n = len(read(p))
+            except OSError:
+                continue
+            left = cfg['lines'] - n
+            if 0 <= left <= 10:
+                tight.append(f'{name} {n}/{cfg["lines"]}（剩 {left}）')
+        if tight:
+            print('余额吃紧：' + '，'.join(tight))
 
     # 版本一定要打在最后一行：拷贝式分发下，两边对不上就说明有一边该重拷了（GQ-13）
     ver = f'doc_lint v{VERSION}'

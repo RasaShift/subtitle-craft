@@ -1,6 +1,7 @@
 ---
 name: subtitle-check
-description: 字幕精校「验收」：执行方交回 findings 或判定结果后，跑复算、逐条判红，给放行或打回结论，并说清是谁的错。**出现这些情况必须用本技能**：用户说「验收」「复算」「放行还是打回」「这批示能落吗」「报红怎么判」「是真错还是时序」「核对执行方交回的东西」；或要给一批 findings 下结论。注意：写 findings 归对稿 / 审稿，本技能只验不写。
+description: 字幕精校「验收」：执行方交回 findings 或判定结果后，跑复算、逐条判红，给放行或打回结论，并说清是谁的错。写 findings 归对稿 / 审稿，本技能只验不写。
+disable-model-invocation: true
 version: 0.1.0
 agent_created: true
 allowed-tools: Read, Write, Bash, Grep, Glob

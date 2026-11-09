@@ -1,6 +1,7 @@
 ---
 name: subtitle-align
-description: 字幕精校「对稿」：拿清稿后的字幕和一份参照（官方英轨 / 外挂字幕 / 另一版译稿）逐条比，判英文与中文对不上时该动哪一边。**出现这些情况必须用本技能**：用户说「对稿」「对轨」「判对轨」「对轨必看表」「英文和官方对不上」「英文这条要不要跟官方改」「错位」「我们缺」「比官方字幕」；或给出对轨分诊表。注意：查表命中的必看表归 subtitle-clean，两者文件名都有「必看」，靠工序区分。
+description: 字幕精校「对稿」：拿清稿后的字幕和一份参照（官方英轨 / 外挂字幕 / 另一版译稿）逐条比，判英文与中文对不上时该动哪一边。查表命中的必看表归清稿，两者靠工序区分。
+disable-model-invocation: true
 version: 0.1.0
 agent_created: true
 allowed-tools: Read, Write, Bash, Grep, Glob

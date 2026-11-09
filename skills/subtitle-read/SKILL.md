@@ -1,6 +1,7 @@
 ---
 name: subtitle-read
-description: 字幕精校「审稿」（可选工序，默认不审，做不做由委托人定）：先定这一集读多深，再逐条读中文判「观众会不会理解错」，判完做品控并落到成品。**出现这些情况必须用本技能**：用户说「审稿」「读这一集」「判审稿」「判这集候选」「这条该不该改」「意思对不上」「定档」「这一集读多深」「全量还是关键点」「预筛」「盲测」「抽看误报」「落盘」「开一集审稿」「切分片」「查回顾段」；或给出审稿候选清单。注意：查表归 subtitle-clean，比参照归 subtitle-align，验执行方交回的 findings 归 subtitle-check。
+description: 字幕精校「审稿」：可选工序，默认不审，做不做由委托人定。读中文判「观众会不会理解错」，先定档再读，判完做品控并落盘。查表归清稿，比参照归对稿，验执行方交回的 findings 归验收。
+disable-model-invocation: true
 version: 0.1.0
 agent_created: true
 allowed-tools: Read, Write, Bash, Grep, Glob

@@ -35,7 +35,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = '2026-11-09T1120'
+VERSION = '2026-11-09T1128'
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / 'docs'
@@ -496,6 +496,42 @@ _CNT_PATTERNS = (
 )
 
 
+# 术语表词条区禁用的状态词。这些词写的是「现在到哪」，而术语表只回答
+# 「这个词指什么」——两者混在一起，抄的那一刻对，之后没人回来改。
+STATE_WORDS = ('下一批', '目前', '现在', '当前', '还剩', '暂时', '最近')
+
+
+def check_glossary_state() -> list:
+    """术语表词条区不许出现状态词。
+
+    2026-11-09 加（自己犯的）：从协议 §5 抄了一句「下一批从 `#12` 起」，
+    抄的时候是对的，抄完立刻过期——台账已经排到 `#41`。**术语表里给一条错的
+    规则，比不给更糟**：人是来查「这词到底什么意思」的，不会去核对号段。
+    同源病根是 `GQ-17`「转述丢条件」——转述的副本不知道原件已经变了。
+
+    只查词条区（`## 词条` 到 `## Flagged ambiguities` 之间）：头部要写
+    「现有几条」这类体量说明，歧义节要写「曾经指两个东西」这类历史。
+    """
+    p = DOCS / 'GLOSSARY.md'
+    if not p.is_file():
+        return []
+    lines = read(p)
+    try:
+        a = next(i for i, l in enumerate(lines) if l.startswith('## 词条'))
+        b = next(i for i, l in enumerate(lines) if l.startswith('## Flagged'))
+    except StopIteration:
+        return []
+    out = []
+    for i in range(a, b):
+        for w in STATE_WORDS:
+            if w in lines[i]:
+                out.append(('WARN', f'{DOCS.name}/GLOSSARY.md L{i + 1} 出现状态词「{w}」'
+                                     f'——这里只回答词是什么意思；号段、进度这类会过期的'
+                                     f'状态去真身看'))
+                break
+    return out
+
+
 def check_progress_head() -> list:
     """进度台账头部必须自带「禁止手改」。
 
@@ -645,6 +681,7 @@ def main() -> int:
     issues += check_long_lines()
     issues += check_refs()
     issues += check_counts()
+    issues += check_glossary_state()
     issues += check_progress_head()
     issues += check_handoff_doc()
     issues += check_skills()

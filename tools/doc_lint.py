@@ -683,9 +683,10 @@ def check_counts() -> list:
 
 # 库根下的「工具层」：不带编号，给命令敲。另一半是「数据层」：`NN_中文名`，给人翻。
 # 两段的分法见 docs/命名准则.md 第六节，检查在 check_top_dirs。
-# 2026-11-10 加两个临时豁免：外部参考原料，定性与清理条件见 docs/文档落点表.md。
+# 2026-11-10 加临时豁免：外部参考原料，定性与清理条件见 docs/文档落点表.md。
+# （同日移走的中译包豁免随删。）
 TOP_DIR_OK = {'docs', 'tools', 'skills', 'examples',
-              '转写', 'mattpocock-skills-zh-CN-1.3.1'}
+              '转写'}
 
 
 def check_top_dirs(root: Path = None) -> list:

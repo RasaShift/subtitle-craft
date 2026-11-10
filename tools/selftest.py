@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# 最近修改：2026-11-05（新建：最小回归集；同日加「同条重复声明被拒」正反两条）
+# 最近修改：2026-11-10（加 t_doclint_backref：doc_lint 主表-详情反向检查双向用例，#56）
 """selftest.py -- 五件工具的最小回归
 
 为什么有它：2026-11-05 写分诊器时，同一条规则连改三次，全靠肉眼看输出对不对。
@@ -753,6 +753,99 @@ def t_handoff_fresh():
               any('现在到哪' in m for t, m in res), res)
     finally:
         dl.DOCS, dl.ROOT = old_docs, old_root
+
+
+def t_doclint_backref():
+    """doc_lint 反向检查：主表「等我动手 / 等协作方」条目必须有详情段（#56）。
+
+    正例是 11-09 真踩过的形态：#50 进了主表、详情忘写段，体检照样绿，三棒没发现，
+    直到赵哥问起才补（提交 13d9aa0）。把那天的实情换了个号原样放回去——
+    检查不红就说明这条检查是摆设。
+    """
+    import doc_lint as dl
+    d = Path(tempfile.mkdtemp())
+    docs = d / 'docs'
+    docs.mkdir()
+
+    def write_tz():
+        (docs / '待办台账.md').write_text(
+            '# 台账\n\n'
+            '## 一、等我动手（2 条）\n\n'
+            '| # | 干什么 | 卡在哪 |\n|---|---|---|\n'
+            '| `#50` | 进台账 | 详情漏段 |\n'
+            '| `#51` | 盘文档 | 成本高 |\n\n'
+            '## 二、等协作方（1 条）\n\n'
+            '| # | 干什么 | 卡在哪 |\n|---|---|---|\n'
+            '| `#43` | 核病根 | 等剧库重拷 |\n\n'
+            '## 三、等外部（1 条）\n\n'
+            '| # | 干什么 | 卡在哪 |\n|---|---|---|\n'
+            '| `#40` | 验骨架 | 等真库 |\n',
+            encoding='utf-8')
+
+    write_tz()
+    (docs / '待办台账-详情.md').write_text(
+        '# 详情\n\n## #50 台账漏详情段\n\n- **核于**：2026-11-09\n\n'
+        '## #99 无核段（正向用例）\n',
+        encoding='utf-8')
+
+    old = dl.DOCS, dl.ROOT
+    dl.DOCS, dl.ROOT = docs, d
+    try:
+        # ① 该命中的：#51（等我动手）、#43（等协作方）漏段必须报，且各报一条
+        res = dl.check_taizhang_note()
+        errs51 = [m for t, m in res if t == 'ERROR' and '#51' in m]
+        check('doclint/主表有详情无段报 ERROR（#51）', len(errs51) == 1, res)
+        check('doclint/报错点名条目号与节名', bool(errs51) and '等我动手' in errs51[0], errs51)
+        check('doclint/等协作方 #43 报 ERROR',
+              len([m for t, m in res if t == 'ERROR' and '#43' in m]) == 1, res)
+        # ② 不该命中的：#50 有段不报；#40 在等外部节，判了两节范围，不报
+        check('doclint/详情有段的 #50 不报',
+              not any(t == 'ERROR' and '#50' in m for t, m in res), res)
+        check('doclint/等外部 #40 不报（范围外）',
+              not any('#40' in m for _, m in res), res)
+        # ③ 正向不被反向挤掉：缺「核于」的段照旧 WARN
+        check('doclint/正向「核于」检查还在',
+              any(t == 'WARN' and '#99' in m for t, m in res), res)
+
+        # ④ 归档提及算对齐：#51 进归档后不再报，#43 仍报
+        ar = docs / 'archive'
+        ar.mkdir()
+        (ar / '已完成_202611.md').write_text('## #51 盘文档\n\n结：三处合并一处。\n',
+                                             encoding='utf-8')
+        res = dl.check_taizhang_note()
+        check('doclint/归档提及的 #51 算对齐',
+              not any(t == 'ERROR' and '#51' in m for t, m in res), res)
+        check('doclint/归档对齐后 #43 照报',
+              any(t == 'ERROR' and '#43' in m for t, m in res), res)
+        # 归档提到 #439 不算 #43 对齐（\\b 边界）
+        (ar / '已完成_202611.md').write_text('## #439 别的库的条目\n',
+                                             encoding='utf-8')
+        res = dl.check_taizhang_note()
+        check('doclint/归档提及 #439 不顶 #43 的包',
+              any(t == 'ERROR' and '#43' in m for t, m in res), res)
+
+        # ⑤ 补上详情段就是过——反向只拦「进了台账忘写段」，不拦内容
+        # （#51 的归档对齐在 ④ 被换成 #439 了，所以两条都要补段）
+        p = docs / '待办台账-详情.md'
+        p.write_text(p.read_text(encoding='utf-8') +
+                     '\n## #51 盘文档\n\n- **核于**：2026-11-10\n\n'
+                     '## #43 核验七组病根\n\n- **核于**：2026-11-10\n',
+                     encoding='utf-8')
+        res = dl.check_taizhang_note()
+        check('doclint/补齐段后全过（只剩正向 #99）',
+              not [m for t, m in res if t == 'ERROR'] and
+              any(t == 'WARN' and '#99' in m for t, m in res), res)
+
+        # ⑥ 老库形态：没有「等我动手」节名 → 跳过，不炸不制造误报
+        write_tz()
+        (docs / '待办台账.md').write_text(
+            '# 台账\n\n## 待办\n\n| # | 干什么 |\n|---|---|\n| `#51` | 盘文档 |\n',
+            encoding='utf-8')
+        res = dl.check_taizhang_note()
+        check('doclint/无节名形态不炸不误报',
+              not [m for t, m in res if t == 'ERROR'], res)
+    finally:
+        dl.DOCS, dl.ROOT = old
 
 
 def t_skill_links():
@@ -1670,6 +1763,7 @@ def main():
     t_doclint_skills()
     t_skill_links()
     t_handoff_fresh()
+    t_doclint_backref()
     t_ass_rows()
     t_check_rules()
     t_cross_lib()

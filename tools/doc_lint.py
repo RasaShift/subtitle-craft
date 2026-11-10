@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# 最近修改：2026-11-08T2130（VERSION 带时分；--docs 生效时三处硬编码一并改到、归档豁免认 `_存档`、老库不再为本库文档报噪音）
+# 最近修改：2026-11-10T1458（#56：check_taizhang_note 加反向分支——主表两节在办条目详情必须有段）
 """doc_lint.py -- 文档体检：把「文档该怎么写」从陈述句改成可机检的断言
 
 为什么有它：文档乱掉的共因只有三条——规矩写在被管的文件里、超限没有出口、
@@ -35,7 +35,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = '2026-11-10T0002'
+VERSION = '2026-11-10T1458'
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / 'docs'
@@ -142,7 +142,7 @@ def check_skills(root: Path = None) -> list:
 
 
 def check_taizhang_note(path: Path = None) -> list:
-    """台账详情：每个 `## #N` 段必须有一行「核于」。
+    """台账详情：每个 `## #N` 段必须有一行「核于」；主表在办条目必须反向有段。
 
     条目的「卡在哪」会过期。2026-11-07 一天里三条写错：#19 数字过期（写 20 处、
     实际 15 处）、#20 顺序过期（写「跟 #18 一起做」、#18 早做完）、#17 指的是两个
@@ -150,6 +150,14 @@ def check_taizhang_note(path: Path = None) -> list:
 
     只查「有没有这一行」，不查日期新旧：旧不等于错（有的条目本来就稳定），
     机器也判不了「这条还成不成立」——那是人的事，机器只负责让「没核过」藏不住。
+
+    **反向分支（2026-11-10，#56）**：主表「等我动手 / 等协作方」两节的每个 `#N`
+    必须在详情有对应 `## #N` 段（归档目录有 `已完成_*.md` 提及该号也算对齐）。
+    病根第二次踩（11-08 `#39` → 11-09 `#50`）：正向只查「详情有段必核于」，反着
+    「主表进了条目、详情忘写段」没人管，体检照样绿。只判这两节——等外部 / 等你
+    拍板的条目动手时总要移进前两节，那里漏了后面拦得住；在前两节漏了就真开干了。
+    只抓表格第一列的条目号，行内交叉引用（「跟 #40 一并验」）不算入办条目。
+    节名对不上时跳过：那是老库没这个形态，漏报方向，不制造误报。
     """
     p = path or (DOCS / '待办台账-详情.md')
     if not p.is_file():
@@ -161,6 +169,39 @@ def check_taizhang_note(path: Path = None) -> list:
         if not any('核于' in ln for ln in buf):
             out.append(('WARN', f'{p.name} L{lineno}「{title[3:][:26]}」没有「核于」一行'
                                  f'——没记哪天核过，等于没人核过'))
+
+    # —— 反向分支（#56）：主表两节在办条目，详情必须有段 ——
+    tz = DOCS / '待办台账.md'
+    if not tz.is_file():
+        return out
+    lines = read(tz)
+    sect = {}
+    cur = None
+    for ln in lines:
+        if ln.startswith('## '):
+            cur = ln
+            continue
+        if cur is None:
+            continue
+        sect.setdefault(cur, []).append(ln)
+    have_details = set(re.findall(r'^## #(\d+)', p.read_text(encoding='utf-8-sig'), re.M))
+    archived = ''
+    ar = DOCS / 'archive'
+    if ar.is_dir():
+        archived = '\n'.join(q.read_text(encoding='utf-8', errors='replace')
+                             for q in ar.glob('已完成_*.md'))
+    for name, kind in (('等我动手', '等我动手'), ('等协作方', '等协作方')):
+        body = next((v for k, v in sect.items() if name in k), None)
+        if body is None:
+            continue
+        for ln in body:
+            m = re.match(r'^\s*\|\s*`#(\d+)`', ln)
+            if not m:
+                continue
+            n = m.group(1)
+            if n not in have_details and not re.search(r'#%s\b' % n, archived):
+                out.append(('ERROR', f'待办台账「{kind}」条目 #{n} 在 {p.name} 没有对应'
+                                     f' `## #{n}` 段，归档也没提——进台账就必须有详情段'))
     return out
 
 

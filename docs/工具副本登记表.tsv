@@ -27,3 +27,4 @@ term_candidates.py	本库 tools/	无	唯一	11-05 新建；术语候选提取，
 text_scan.py	本库 tools/	无	唯一	11-07 新建；文本层扫描 `MT1`–`MT4`
 validate_semantic.py	本库 tools/	无	唯一	语义审读 JSON → findings 结构。**本库跑不动**：默认在库根递归找该集 ass（台账 `#26`）
 mk_meta.py	本库 tools/	无	唯一	2026-11-08 新建：扫目录里 片N.tsv 数行数、数源字幕总条数，产 meta.json。口径 meta.rows = 各片相加（不含 skipped），与 check_slices 一致；cut 算不出来不产，已有的人工键重跑 --force 保留
+restore.py	本库 tools/	无	唯一	2026-11-10 新建（台账 #54）：安全还原，先备份到仓库根 _tmp/restore_backup/ 再 git checkout --。还原一律用它，禁裸 git checkout --（判定记录 11-10 有 ADR）；只管工作区还原，reset --hard 不在范围

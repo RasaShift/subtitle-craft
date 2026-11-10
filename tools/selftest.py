@@ -1597,6 +1597,47 @@ def t_mf8():
     check('MF8/不折改前必须报红', any('条数变了' in x for x in issues0), issues0)
 
 
+def t_restore():
+    """安全还原工具：备份先行、还原生效、untracked 不误伤。
+
+    正例是真踩过的错（11-09）：裸 `git checkout` 还原测试数据，把「未提交的
+    修复」一起回滚且无提示。这里断言两向——还原生效（该命中的命中了）＋
+    备份留住改动后版本（错了能撤，这正是裸 checkout 做不到的）。
+    """
+    import subprocess
+    here = Path(__file__).resolve().parent
+    tool = here / 'restore.py'
+    check('还原/脚本在', tool.is_file(), str(tool))
+
+    d = Path(tempfile.mkdtemp()) / '还原仓'
+    d.mkdir()
+    run = lambda *a: subprocess.run(['git', *a], cwd=str(d),
+                                    capture_output=True, text=True)
+    run('init', '-q')
+    run('config', 'user.name', 't')
+    run('config', 'user.email', 't@t')
+    f = d / '数据.txt'
+    f.write_text('基线\n', encoding='utf-8')
+    run('add', '.')
+    run('commit', '-qm', '基线')
+    f.write_text('未提交的修复\n', encoding='utf-8')    # 裸 checkout 会吃掉的就是这行
+    u = d / '未跟踪.txt'
+    u.write_text('untracked\n', encoding='utf-8')
+
+    r = subprocess.run([sys.executable, str(tool), '数据.txt', '未跟踪.txt'],
+                       capture_output=True, text=True, cwd=str(d))
+    out = (r.stdout or '') + (r.stderr or '')
+    check('还原/退出码 0', r.returncode == 0, out[-200:])
+    txt = f.read_text(encoding='utf-8')
+    check('还原/工作区回到基线', '基线' in txt and '未提交的修复' not in txt, txt[:40])
+    check('还原/untracked 没被动', u.read_text(encoding='utf-8') == 'untracked\n')
+    baks = list((d / '_tmp' / 'restore_backup').rglob('数据.txt'))
+    check('还原/备份落盘', len(baks) == 1, str(baks))
+    if baks:
+        check('还原/备份留住改动后版本',
+              '未提交的修复' in baks[0].read_text(encoding='utf-8'))
+
+
 def main():
     global VERBOSE
     ap = argparse.ArgumentParser()
@@ -1630,6 +1671,7 @@ def main():
     t_gen_progress()
     t_counts()
     t_top_dirs()
+    t_restore()
 
     print(f'\n通过 {len(PASS)}，失败 {len(FAIL)}')
     if FAIL:

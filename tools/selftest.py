@@ -270,6 +270,86 @@ def t_land():
     check('落地/不同条号不误拦', len(lv.read_changes(ch4)) == 2, '不同条号被误拦了')
 
 
+def t_land_time():
+    """时间码改动（`GQ-22`）：声明了就按声明改，双锚点对不上就不改。
+
+    这条的病根是「承诺与实现不一致」——文档写着「不动**没声明**的时间码」，暗示声明了能动，
+    而三列改动表装不下时间码，`verify` 只比中文，一动时间码就落进「未声明」。
+    """
+    ass = ('[Events]\nFormat: Layer, Start, End, Style, Actor, MarginL, MarginR, MarginV, Effect, Text\n'
+           'Dialogue: 0,0:00:10.00,0:00:12.00,Default,NTP,0,0,0,,第一句\\N{\\rEnglish}First.\n'
+           'Dialogue: 0,0:00:12.00,0:00:14.00,Default,NTP,0,0,0,,第二句\\N{\\rEnglish}Second.\n')
+    d = Path(tempfile.mkdtemp())
+    src, ch = d / 'a.ass', d / 'c.tsv'
+    src.write_bytes(ass.encode('utf-8'))
+    ch.write_text('no\told\tnew\told_time\tnew_time\tstage\n'
+                  '2\t第二句\t第二句\t0:00:12.00-0:00:14.00\t0:00:12.00-0:00:13.00\tread\n',
+                  encoding='utf-8', newline='')
+
+    rows = lv.read_changes(ch)
+    check('时间码/按表头认列', rows[0]['old_t'] == (12000, 14000) and rows[0]['new_t'] == (12000, 13000),
+          str(rows[0]))
+    out, done, miss, added = lv.apply(src, rows)
+    check('时间码/实改 1 条', done == 1 and not miss, f'done={done} miss={miss}')
+    check('时间码/终点已收', '0:00:12.00,0:00:13.00,Default' in out[3], out[3][:70])
+    dst = d / 'b.ass'
+    dst.write_bytes(''.join(out).encode('utf-8'))
+    issues, st = lv.verify(src, dst, rows)
+    check('时间码/复算通过', not issues, str(issues))
+
+    # 反向①：old_time 与文件对不上 → 不改（时间码也走双锚点）
+    ch2 = d / 'c2.tsv'
+    ch2.write_text('no\told\tnew\told_time\tnew_time\n'
+                   '2\t第二句\t第二句\t0:00:12.00-0:00:15.00\t0:00:12.00-0:00:13.00\n',
+                   encoding='utf-8', newline='')
+    _o, done2, miss2, _a = lv.apply(src, lv.read_changes(ch2))
+    check('时间码/旧时间码对不上不改', done2 == 0 and len(miss2) == 1, f'done={done2} miss={miss2}')
+
+    # 反向②：只写一侧必须拒——另一半变不变，机器猜不出来
+    ch3 = d / 'c3.tsv'
+    ch3.write_text('no\told\tnew\tnew_time\n2\t第二句\t第二句\t0:00:12.00-0:00:13.00\n',
+                   encoding='utf-8', newline='')
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            lv.read_changes(ch3)
+        check('时间码/只写一侧被拒', False, '没拒')
+    except SystemExit as e:
+        check('时间码/只写一侧被拒', e.code == 2, f'退出码应是 2，实际 {e.code}')
+
+    # 反向③：改了文本没改时间码，复算要报（旧版这里全绿）
+    issues3, st3 = lv.verify(src, src, rows)
+    check('时间码/没落到文件要报', st3['不符'] == 1 and any('时间码' in x for x in issues3),
+          str(issues3)[:140])
+
+    # 反向④：老表第四列是 rule，不许被当成时间码
+    ch4 = d / 'r.tsv'
+    ch4.write_text('no\told\tnew\trule\n1\t第一句\t第一句话\tC2.1\n', encoding='utf-8', newline='')
+    r4 = lv.read_changes(ch4)
+    check('时间码/rule 列不当时间码', r4[0]['old_t'] is None and r4[0]['new'] == '第一句话', str(r4[0]))
+
+    # 验收：密度分两数（`stage=fmt` 的算格式层），且 0 条那一类不标 ⚠
+    ch5 = d / 'c5.tsv'
+    ch5.write_text('no\told\tnew\tstage\n1\t第一句\t第一句话\tread\n2\t第二句\t第二句话\tfmt\n',
+                   encoding='utf-8', newline='')
+    rows5 = lv.read_changes(ch5)
+    out5, _x, _y, _z = lv.apply(src, rows5)
+    dst5 = d / 'e.ass'
+    dst5.write_bytes(''.join(out5).encode('utf-8'))
+    marks, _c = ac.check(src, dst5, rows5, [])
+    check('验收/密度分两数', any('审稿改动' in m for _, m in marks)
+          and any('格式层动作' in m for _, m in marks), str([m for _, m in marks]))
+
+    # 三数对账：并表少于 findings → ⚠ 要人解释；多于 findings → ✗ 没有出处
+    m6, _ = ac.check(src, dst5, rows5, [], None, 5)
+    check('验收/三数少条要提示', any(l == '⚠' and 'findings' in m for l, m in m6), str(m6))
+    m7, _ = ac.check(src, dst5, rows5, [], None, 1)
+    check('验收/并表多出来判不过', any(l == '✗' and 'findings' in m for l, m in m7), str(m7))
+    fd = d / 'f.tsv'
+    fd.write_text('tc\tcn\tissue\n0:00:10,000\t第一句\t示例\n0:00:12,000\t第二句\t示例\n',
+                  encoding='utf-8', newline='')
+    check('验收/findings 条数表头不算', ac.count_findings(fd) == 2, str(ac.count_findings(fd)))
+
+
 def t_accept():
     """验收：数字报全；「条数行数都对、只有补行位置错」必须抓得到——那正是跳行的形态。"""
     head = ('[Events]\nFormat: Layer, Start, End, Style, Actor, MarginL, MarginR, MarginV, Effect, Text\n'
@@ -1846,6 +1926,7 @@ def main():
     t_triage()
     t_pairs()
     t_land()
+    t_land_time()
     t_land_inserts()
     t_findings2tsv()
     t_land_inplace()

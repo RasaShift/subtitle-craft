@@ -7,14 +7,22 @@
 手工改一百条，事后没人能说清是不是顺手碰到了别处。分工固定：判 = 分诊/通读/查表，
 写和验 = 本脚本，但**不放在一条命令里替人打包票**——apply 和 verify 是两条独立命令。
 
-管两件事：① 换字（按「条号 + 旧文本」双锚点，只换中文段）；② 补行（整句漏译补一条新行）。
-两类都不能动英文段、不动未声明的行、不动没声明的时间码。
+管三件事：① 换字（按「条号 + 旧文本」双锚点，只换中文段）；② 改时间码（按「条号 + 旧时间码」
+双锚点，只改声明的那两条时间）；③ 补行（整句漏译补一条新行）。
+三样都不动英文段、不动未声明的行、不动没声明的时间码。
 
 用法：
     python land_verify.py apply  <成品.ass> <改动.tsv> [--inserts 补行.tsv] [-o 输出] [--in-place] [--dry-run]
     python land_verify.py verify <改前> <改后> <改动.tsv> [--inserts 补行.tsv]
 
-改动.tsv 三列（带不带表头都行）：`no` / `old` / `new`，即 条号 / 旧文本 / 新文本
+改动.tsv 三列必需（带不带表头都行）：`no` / `old` / `new`，即 条号 / 旧文本 / 新文本
+  · **可选列按表头认名**：`old_time` / `new_time`（成对出现，各自写 `开始-结束`，如
+    `0:11:41.12-0:11:42.12`）、`stage`（`mech` / `triage` / `read` / `fmt`，本脚本只透传，
+    验收拿它把密度分两类）。**没有表头时只认前三列**——第四列起可能是 `rule` / `note` /
+    `evidence`，按下标硬猜会把规则名当时间码。
+  · 时间码也走双锚点：`old_time` 必须与该条改前的时间码一致，不一致按失配处理（不改，不猜）。
+    声明了 `old_time` 却不给 `new_time`（或反过来）直接拒。**只支持 ASS**——SRT 的时间码在
+    `-->` 那一行，改它等于改块结构，本版不做。
   · 旧文本**等于该条整句**时按整条替换；否则按子串替换，且必须恰好命中 1 次。
     命中 0 次或多次都算锚点失配——多次就是不唯一，不替人决定改哪一个。
   · **同一条号只许出现一行**。两行改同一条会被后一行覆盖前一行，而 verify 按条号去重后
@@ -56,6 +64,16 @@ from bilingual_pairs import split_bilingual
 ASS_FIELD = 9                       # Dialogue 行的 Text 是第 10 个字段
 EN_MARK = '\\N{\\rEnglish}'
 CJK = re.compile(r'[\u4e00-\u9fff]')
+# 改动表的可选列：按表头名认，不按下标猜。中文表头与英文表头都收——
+# 本库自己写中文表头（条号/旧文本/新文本），findings2tsv 吐的是英文名。
+CHANGE_COLS = {
+    'no': 'no', '条号': 'no', '中文条号': 'no',
+    'old': 'old', '旧文本': 'old', '中文文本': 'old',
+    'new': 'new', '新文本': 'new',
+    'old_time': 'old_time', '旧时间码': 'old_time',
+    'new_time': 'new_time', '新时间码': 'new_time',
+    'stage': 'stage', '层': 'stage',
+}
 SYNC = re.compile(r'^\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}\s*-->')
 SRT_TC = re.compile(r'(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*'
                     r'(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})')
@@ -132,24 +150,76 @@ def load(path):
     return lines, cues, kind
 
 
+def split_pair(v):
+    """`开始-结束` → ((s_ms, e_ms), (s原串, e原串))；认不出返回 None。
+
+    两侧都要写全：只写一半时，另一半是「不变」还是「填漏了」机器猜不出来，
+    而猜错的代价是把一条字幕的显示时长悄悄改掉。
+    """
+    parts = [x.strip() for x in str(v).split('-')]
+    if len(parts) != 2:
+        return None
+    s, e = to_ms(parts[0]), to_ms(parts[1])
+    if s is None or e is None or e <= s:
+        return None
+    return (s, e), (parts[0], parts[1])
+
+
 def read_changes(path):
+    """读改动表 → [{'no','old','new','old_t','new_t','stage','row'}]。
+
+    有表头就按表头认列——`old_time` / `new_time` / `stage` 这几个可选列只有靠名字才认得出来；
+    没表头就按位置认前三列。第四列起在老表里是 `rule` / `note` / `evidence`，
+    按下标硬猜必然把它们当时间码。
+    """
+    raw = [ln for ln in decode(path).splitlines() if ln.strip()]
+    if not raw:
+        fail(f'改动表是空的：{path}')
+    head = [x.strip().lower() for x in raw[0].split('\t')]
+    named = {}
+    for i, name in enumerate(head):
+        key = CHANGE_COLS.get(name)
+        if key and key not in named:
+            named[key] = i
+    if all(k in named for k in ('no', 'old', 'new')):
+        cols, body = named, raw[1:]
+    elif not head[0].split('\t')[0].strip().isdigit():
+        fail(f'改动表第 1 行像是表头，但认不出必需列（要 no/old/new 或 条号/旧文本/新文本）：'
+             f'{raw[0][:60]!r}')
+    else:
+        cols, body = {'no': 0, 'old': 1, 'new': 2}, raw
+
     rows = []
-    for i, line in enumerate(decode(path).splitlines()):
-        if not line.strip():
-            continue
+    for i, line in enumerate(body):
         parts = [x.strip() for x in line.split('\t')]
-        if len(parts) < 3 or not parts[0].isdigit():
-            if i == 0:
-                continue                        # 表头
-            sys.exit(f'改动表第 {i + 1} 行不合格（要三列，首列条号是数字）：{line[:40]}')
-        rows.append((int(parts[0]), parts[1], parts[2]))
+
+        def get(k):
+            return parts[cols[k]] if k in cols and cols[k] < len(parts) else ''
+
+        if not get('no').isdigit():
+            fail(f'改动表第 {i + 1} 行首列不是条号：{line[:40]}')
+        r = {'no': int(get('no')), 'old': get('old'), 'new': get('new'),
+             'old_t': None, 'new_t': None, 'old_raw': None, 'new_raw': None,
+             'stage': get('stage'), 'row': i + 1}
+        ot, nt = get('old_time'), get('new_time')
+        if bool(ot) != bool(nt):
+            fail(f'改动表第 {i + 1} 行只声明了时间码的一侧（old_time={ot!r} / new_time={nt!r}）'
+                 f'——两侧写全，机器不替你猜另一半变不变')
+        if ot:
+            a, b = split_pair(ot), split_pair(nt)
+            if not a or not b:
+                fail(f'改动表第 {i + 1} 行时间码认不出：{ot!r} / {nt!r}'
+                     f'（写成 `开始-结束`，如 0:11:41.12-0:11:42.12）')
+            r['old_t'], r['old_raw'] = a
+            r['new_t'], r['new_raw'] = b
+        rows.append(r)
     if not rows:
-        sys.exit(f'改动表是空的：{path}')
+        fail(f'改动表是空的：{path}')
     seen, dup = set(), []
-    for no, _, _ in rows:
-        if no in seen:
-            dup.append(no)
-        seen.add(no)
+    for r in rows:
+        if r['no'] in seen:
+            dup.append(r['no'])
+        seen.add(r['no'])
     if dup:
         print(f'改动表里同一条声明了多次：{sorted(set(dup))}'
               f'——一条字幕只能有一个最终文本；同一条的多处改动要先合成一行，'
@@ -292,11 +362,20 @@ def apply(path, rows, inserts=None):
             fail('补行只支持 ASS：SRT 每条占四行块、序号要重排，本版不做')
         by = plan_inserts(cues, inserts)
 
-    for no, old, new in rows:
+    for r in rows:
+        no, old, new = r['no'], r['old'], r['new']
         c = by_no.get(no)
         if not c:
             miss.append((no, old, '条号不存在'))
             continue
+        if r['new_t']:
+            if kind != 'ass':
+                miss.append((no, old, '时间码改动只支持 ASS，SRT 的要重排块结构'))
+                continue
+            if (c['s'], c['e']) != r['old_t']:
+                miss.append((no, old, f'改前时间码 {c["s"]}–{c["e"]}ms 与声明 '
+                                      f'{r["old_t"][0]}–{r["old_t"][1]}ms 对不上（双锚点）'))
+                continue
         nz = new_zh(c['zh'], old, new)
         if nz is None:
             miss.append((no, old, '锚点失配（旧文本不在该条，或命中多次）'))
@@ -305,7 +384,12 @@ def apply(path, rows, inserts=None):
         if kind == 'ass':
             head = c['text'].split(EN_MARK)[0]      # 英文段之前的原始串（含标签、\N）
             rest = c['text'][len(head):]            # 英文段原样留住，一个字节不动
-            bare[c['line']] = c['prefix'] + nz + rest
+            prefix = c['prefix']
+            if r['new_t']:
+                f = prefix.split(',')               # Layer, Start, End, Style, …，末位空串
+                f[1], f[2] = r['new_raw'][0], r['new_raw'][1]
+                prefix = ','.join(f)
+            bare[c['line']] = prefix + nz + rest
         else:
             zh_idx = [i for i in c['body'] if CJK.search(bare[i])]
             new_lines = nz.split('\n')
@@ -396,7 +480,7 @@ def verify(before_path, after_path, rows, inserts=None, allow_lines=0):
     if len(ab) != want_lines or len(ac) != len(expected):
         return issues, {'声明': len(rows), '补行': 0, '在位': 0, '不符': len(rows), '多改': 0}
 
-    want = {no: (old, new) for no, old, new in rows}
+    want = {r['no']: r for r in rows}
     ok = bad = ins_ok = 0
     dirty = []
     for pos, (ki, key) in enumerate(expected):
@@ -415,7 +499,8 @@ def verify(before_path, after_path, rows, inserts=None, allow_lines=0):
 
         cb, ca = bc[key - 1], ac[pos]
         if key in want:
-            old, new = want[key]
+            r = want[key]
+            old, new = r['old'], r['new']
             # 期望值从「改前 + 声明」重算一遍，不看 apply 怎么说——复算的意思就是不信任上一次
             expect = new_zh(cb['zh'], old, new)
             if expect is None:
@@ -423,6 +508,14 @@ def verify(before_path, after_path, rows, inserts=None, allow_lines=0):
                 bad += 1
             elif ca['zh'].strip() != expect.strip():
                 issues.append(f'条 {key}：改后是「{ca["zh"][:24]}」，按声明应是「{expect[:24]}」')
+                bad += 1
+            elif r['new_t'] and (cb['s'], cb['e']) != r['old_t']:
+                issues.append(f'条 {key}：改前时间码 {cb["s"]}–{cb["e"]} 毫秒与声明不符——'
+                              f'时间码也走双锚点，基线换了就得重写声明')
+                bad += 1
+            elif r['new_t'] and (ca['s'], ca['e']) != r['new_t']:
+                issues.append(f'条 {key}：改后时间码 {ca["s"]}–{ca["e"]} 毫秒，'
+                              f'按声明应是 {r["new_t"][0]}–{r["new_t"][1]}')
                 bad += 1
             else:
                 ok += 1

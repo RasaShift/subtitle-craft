@@ -8,11 +8,12 @@
 于是每次验收都靠人记「还有哪项没看」，记漏了不报错，代价由下一集付。
 
 **它只报数，不判内容。** 改动与补行那两块直接调 `land_verify.verify()`，判据只有一份；
-本文件新增的只有三项：时间倒序、落盘密度、定档痕迹。三档结论：
+本文件新增的只有四项：时间倒序、落盘密度（审稿改动 / 格式层动作分开报）、三数对账、定档痕迹。三档结论：
   ✓ 过     ✗ 不过（退出码 1）    ⚠ 要人看一眼（数字落在参考区间外，未必是错）
 
 用法：
     python tools/accept.py <改前> <改后> [--changes 改动.tsv] [--inserts 补行.tsv] [--stage 定档.md]
+    python tools/accept.py <改前> <改后> --changes 改动.tsv --findings 句法遍.tsv --findings 逐词遍.tsv
     python tools/accept.py <成品>                      # 只做结构体检（不传改前改后时同文件对自身）
 
 「档位声明过」「清单逐条读完」这类**机器判不了**，本工具只查痕迹在不在（定档.md 有没有），
@@ -89,7 +90,43 @@ def style_count(lines):
     return n
 
 
-def check(before, after, rows, ins, stage=None):
+def count_findings(path):
+    """数一份 findings 的条数（按行，表头不算）。**数不出来就明说，不猜。**
+
+    判据只认「首列是数字或时间码」的行——findings 的字段各库不同，认列名等于替它定格式；
+    认首列能认出的表足够用，认不出时返回 None，让调用方把它当「本轮没做三数对账」。
+    """
+    txt = Path(path).read_text(encoding='utf-8', errors='replace')
+    n = 0
+    for i, line in enumerate(txt.splitlines()):
+        s = line.strip()
+        if not s:
+            continue
+        first = s.split('\t')[0].strip()
+        if first.isdigit() or ':' in first:
+            n += 1
+        elif i == 0:
+            continue                      # 表头
+        else:
+            return None                   # 有一行既不像表头也不像条目 → 不敢数
+    return n
+
+
+def density_mark(after_cues, n, label):
+    """密度只标 ⚠、不判 ✗——文档原话是「超出要解释」，工具不该比判据更严。
+
+    `n` 为 0 时直接给 ✓：0 条不落在区间里，标 ⚠ 是拿噪音冒充发现（纯格式层那一批，
+    审稿改动本来就是 0）。
+    """
+    if n == 0:
+        return ('✓', f'{label} 0 条')
+    dens = (n / len(after_cues) * 100) if after_cues else 0.0
+    return ('✓' if DENSITY_LO <= dens <= DENSITY_HI else '⚠',
+            f'{label} {n} 条 / 成品 {len(after_cues)} 条 = {dens:.2f} 条／百条'
+            f'（参考 {DENSITY_LO}–{DENSITY_HI}，超出要能解释，不是错）')
+
+
+def check(before, after, rows, ins, stage=None, findings=0):
     """算出全部标记，返回 ([(级别, 说明)], 退出码)。不打印——自测要能直接调它。"""
     bl, bc, kind = lv.load(before)
     al, ac, _ = lv.load(after)
@@ -135,12 +172,27 @@ def check(before, after, rows, ins, stage=None):
                       f'补行位置 {len(ins)} 条都夹在邻居之间' if not bad_pos else
                       f'补行位置有 {len(bad_pos)} 条不对：' + '；'.join(bad_pos[:3])))
 
-    # ---- 落盘密度：只标 ⚠ 不判错 ----
-    n_chg = len(rows) + len(ins)
-    dens = (n_chg / len(ac) * 100) if ac else 0.0
-    marks.append(('✓' if DENSITY_LO <= dens <= DENSITY_HI else '⚠',
-                  f'落盘 {n_chg} 条 / 成品 {len(ac)} 条 = {dens:.2f} 条／百条'
-                  f'（参考 {DENSITY_LO}–{DENSITY_HI}，超出要能解释，不是错）'))
+    # ---- 三数对账：findings → 并表 → 落地（`GQ-24`） ----
+    # verify 只认改动表，它证明不了「该改的没漏」——漏在表外的条目它不知道存在。
+    # 起点往上提一层：给了 findings 就把「找出来几条」和「并进表几条」摆在一起看。
+    # 去重会让并表数合法地小于 findings 数，所以只有「并表比 findings 还多」才判 ✗。
+    if findings:
+        merged = len(rows)
+        if merged > findings:
+            marks.append(('✗', f'改动表 {merged} 条 > findings {findings} 条——表里多出来的条目没有出处'))
+        elif merged < findings:
+            marks.append(('⚠', f'findings {findings} 条 → 改动表 {merged} 条，少 {findings - merged} 条：'
+                                f'去重要说得出来是哪几条（这个机器判不了）'))
+        else:
+            marks.append(('✓', f'findings {findings} 条 → 改动表 {merged} 条，一条没丢'))
+
+    # ---- 落盘密度：审稿改动与格式层动作分开报（`GQ-28`） ----
+    # 合成一个数时没有判读价值：某集只因同集做了话轮标记就报 18.59 条／百条，
+    # 看着像审稿失控，其实那 78 条是格式。有 `stage` 列就分开，没有就都算审稿改动。
+    fmt_n = sum(1 for r in rows if (r.get('stage') or '').lower() == 'fmt')
+    marks.append(density_mark(ac, len(rows) - fmt_n + len(ins), '审稿改动'))
+    if fmt_n:
+        marks.append(density_mark(ac, fmt_n, '格式层动作'))
 
     # ---- 人判痕迹：只查在不在 ----
     st_ok, st_msg = stage_trace(stage)
@@ -161,12 +213,22 @@ def main():
     ap.add_argument('--changes', help='改动表 TSV（no / old / new）')
     ap.add_argument('--inserts', help='补行表 TSV（只支持 ASS）')
     ap.add_argument('--stage', help='定档.md，只查痕迹不判内容')
+    ap.add_argument('--findings', action='append', metavar='TSV',
+                    help='findings 表，可多次给（两遍各一份）。给了就做三数对账')
     a = ap.parse_args()
 
     before = Path(a.before)
     after = Path(a.after) if a.after else before
     rows = lv.read_changes(Path(a.changes)) if a.changes else []
     ins = lv.read_inserts(Path(a.inserts)) if a.inserts else []
+    find_n = 0
+    for p in a.findings or []:
+        n = count_findings(p)
+        if n is None:
+            print(f'  ⚠  {p} 数不出条数（有一行既不像表头也不像条目），本轮不做三数对账',
+                  file=sys.stderr)
+        else:
+            find_n += n
 
     try:
         bl, bc, kind = lv.load(before)
@@ -177,7 +239,7 @@ def main():
         print(f'读文件出错：{e}', file=sys.stderr)
         return 2
 
-    marks, code = check(before, after, rows, ins, a.stage)
+    marks, code = check(before, after, rows, ins, a.stage, find_n)
     print(f'[验收] {after.name}（{lv.load(after)[2]}，改前 {before.name}）')
     for lvl, msg in marks:
         print(f'  {lvl}  {msg}')

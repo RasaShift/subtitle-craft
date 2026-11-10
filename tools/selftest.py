@@ -87,7 +87,8 @@ def t_align():
     check('对齐/中间那条未挂上', mid['en'] is None, '中间那条不该配上')
     check('对齐/未挂上落「无候选」', mid['flag'] == '未配对:无候选', f'实际 {mid["flag"]}')
     check('对齐/第三条配到英文第 2 条', pairs.get(2) == 1, f'实际 {pairs.get(2)}')
-    check('对齐/置信度有值', rows[0]['conf'] in ('1.00', '0.95', '0.90'), rows[0]['conf'])
+    # 期望值按规格推的算例（align_bilingual 头注：起止全同 → 1.00），不从代码回抄
+    check('对齐/完全匹配置信度 1.00', rows[0]['conf'] == '1.00', rows[0]['conf'])
 
     # 反向：片头窗口内的短句应当被判成标题卡，不是「无候选」
     zh2 = [{'no': 1, 's': 5000, 'e': 6000, 'text': '第1季第1集'}]
@@ -840,6 +841,8 @@ def t_scaffold():
     allmd.append((d / 'README.md').read_text(encoding='utf-8'))
     left = [s for s in allmd if '{{' in s]
     check('骨架/占位符替换干净', not left, (left[0][:80] if left else ''))
+    # 期望值与被测代码同为 today()——动态日期造不出独立真相源，这条只验「日期写进去了」，
+    # 同义反复体检（#53）记录在案：属已知妥协，不是漏网。
     check('骨架/日期是今天', datetime.date.today().isoformat() in txt)
     check('骨架/库名写进台账', '测试库' in txt)
     check('骨架/库名写进 README', '测试库' in (d / 'README.md').read_text(encoding='utf-8'))
@@ -1148,7 +1151,9 @@ def t_ass_rows():
         check('ass_rows：条数对', len(rows) == 2, str(len(rows)))
         check('ass_rows：中文拆出来', rows[0]['cn'].strip() == '你好', repr(rows[0]['cn']))
         check('ass_rows：英文拆出来', rows[0]['en'].strip() == 'Hello', repr(rows[0]['en']))
-        check('ass_rows：行号是物理行号且 1 起', rows[0]['ln'] > 1 and rows[0]['ln'] < rows[1]['ln'],
+        # fixture 固定，物理行号手数（第 9/10 行是两条 Dialogue）——字面量比大小关系强
+        check('ass_rows：行号是物理行号（手数 9/10）',
+              rows[0]['ln'] == 9 and rows[1]['ln'] == 10,
               f"{rows[0]['ln']},{rows[1]['ln']}")
         check('ass_rows：时间码原文与秒数一致', rows[0]['start'] == '0:00:01.00'
               and abs(rows[0]['start_s'] - 1.0) < 1e-6, rows[0]['start'])

@@ -64,7 +64,7 @@ LIMITS = {
     # 超 135 是提醒「该归档了」，不是文档写长了。
     '协作协议.md':  {'lines': 135, 'entry': 0},
 }
-GONGXU_LIMIT = 130      # 工序主干（工序-<名>.md）：判据型，超了说明判据在堆，该拆成两道工序
+GONGXU_LIMIT = 130      # 工序主干（工序-<名>.md）：判据型，超了先三步诊断（复述→归档→压缩），多数不用拆
 GONGXU_LIST_LIMIT = 200 # 工序分片（工序-<名>-<后缀>.md）：清单型，一条一行，长的是必要信息
                         # 200 是观察值不是判据——现在三份分别是 83 / 52 / 48，到顶再议分卷，别删条目
 HANDBOOK_LIMIT = 800    # 工序手册（工序-<名>-手册.md）：装「怎么干」——步骤、命令、模板、自查、交回。
@@ -683,7 +683,9 @@ def check_counts() -> list:
 
 # 库根下的「工具层」：不带编号，给命令敲。另一半是「数据层」：`NN_中文名`，给人翻。
 # 两段的分法见 docs/命名准则.md 第六节，检查在 check_top_dirs。
-TOP_DIR_OK = {'docs', 'tools', 'skills', 'examples'}
+# 2026-11-10 加两个临时豁免：外部参考原料，定性与清理条件见 docs/文档落点表.md。
+TOP_DIR_OK = {'docs', 'tools', 'skills', 'examples',
+              '转写', 'mattpocock-skills-zh-CN-1.3.1'}
 
 
 def check_top_dirs(root: Path = None) -> list:
@@ -790,7 +792,7 @@ def main() -> int:
             GONGXU_LIST_LIMIT if is_list else GONGXU_LIMIT,
             '分片是清单型：一条一行，长的是必要信息——到顶先想分卷，别删条目'
             if is_list else
-            '工序主干一页一件事，超了拆成两道工序（拆出来的明细放 工序-<名>-<后缀>.md）')
+            '工序主干一页一件事，超了先三步诊断：①是否在复述别处（是→删细节留名字）②该归档的有没有归档 ③都不是才压缩或拆（明细放 工序-<名>-<后缀>.md）')
     rp = ROOT / 'README.md'
     if rp.is_file():
         issues += check_lines(rp, README_LIMIT, 'README 只放第一屏：是什么、怎么用、去哪看')

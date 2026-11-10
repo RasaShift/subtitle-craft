@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# 最近修改：2026-11-10（加 t_doclint_backref：doc_lint 主表-详情反向检查双向用例，#56）
+# 最近修改：2026-11-10（台账分节降维：t_doclint_backref 题面节名同步——等协作方/等外部并「等回音」）
 """selftest.py -- 五件工具的最小回归
 
 为什么有它：2026-11-05 写分诊器时，同一条规则连改三次，全靠肉眼看输出对不对。
@@ -756,7 +756,7 @@ def t_handoff_fresh():
 
 
 def t_doclint_backref():
-    """doc_lint 反向检查：主表「等我动手 / 等协作方」条目必须有详情段（#56）。
+    """doc_lint 反向检查：主表「等我动手 / 等回音」条目必须有详情段（#56）。
 
     正例是 11-09 真踩过的形态：#50 进了主表、详情忘写段，体检照样绿，三棒没发现，
     直到赵哥问起才补（提交 13d9aa0）。把那天的实情换了个号原样放回去——
@@ -774,10 +774,10 @@ def t_doclint_backref():
             '| # | 干什么 | 卡在哪 |\n|---|---|---|\n'
             '| `#50` | 进台账 | 详情漏段 |\n'
             '| `#51` | 盘文档 | 成本高 |\n\n'
-            '## 二、等协作方（1 条）\n\n'
+            '## 二、等回音（1 条）\n\n'
             '| # | 干什么 | 卡在哪 |\n|---|---|---|\n'
             '| `#43` | 核病根 | 等剧库重拷 |\n\n'
-            '## 三、等外部（1 条）\n\n'
+            '## 三、等你拍板（1 条）\n\n'
             '| # | 干什么 | 卡在哪 |\n|---|---|---|\n'
             '| `#40` | 验骨架 | 等真库 |\n',
             encoding='utf-8')
@@ -791,17 +791,17 @@ def t_doclint_backref():
     old = dl.DOCS, dl.ROOT
     dl.DOCS, dl.ROOT = docs, d
     try:
-        # ① 该命中的：#51（等我动手）、#43（等协作方）漏段必须报，且各报一条
+        # ① 该命中的：#51（等我动手）、#43（等回音）漏段必须报，且各报一条
         res = dl.check_taizhang_note()
         errs51 = [m for t, m in res if t == 'ERROR' and '#51' in m]
         check('doclint/主表有详情无段报 ERROR（#51）', len(errs51) == 1, res)
         check('doclint/报错点名条目号与节名', bool(errs51) and '等我动手' in errs51[0], errs51)
-        check('doclint/等协作方 #43 报 ERROR',
+        check('doclint/等回音 #43 报 ERROR',
               len([m for t, m in res if t == 'ERROR' and '#43' in m]) == 1, res)
-        # ② 不该命中的：#50 有段不报；#40 在等外部节，判了两节范围，不报
+        # ② 不该命中的：#50 有段不报；#40 在等你拍板节，判了两节范围，不报
         check('doclint/详情有段的 #50 不报',
               not any(t == 'ERROR' and '#50' in m for t, m in res), res)
-        check('doclint/等外部 #40 不报（范围外）',
+        check('doclint/等你拍板 #40 不报（范围外）',
               not any('#40' in m for _, m in res), res)
         # ③ 正向不被反向挤掉：缺「核于」的段照旧 WARN
         check('doclint/正向「核于」检查还在',

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# 最近修改：2026-11-10（台账分节降维：t_doclint_backref 题面节名同步——等协作方/等外部并「等回音」）
+# 最近修改：2026-11-10T2035（加 t_doclint_refs / t_doclint_counts：doc_lint 四项新检查的双向回归）
 """selftest.py -- 五件工具的最小回归
 
 为什么有它：2026-11-05 写分诊器时，同一条规则连改三次，全靠肉眼看输出对不对。
@@ -1736,6 +1736,104 @@ def t_restore():
               '未提交的修复' in baks[0].read_text(encoding='utf-8'))
 
 
+def t_doclint_refs():
+    """doc_lint 三项引用检查：行号指针 / 节号引用 / 段落重复（2026-11-10 加，#51）。
+
+    正例全部取自当天真踩的形态，不是编的：
+      · `工序-审稿.md` 说「实测见手册 :296」，而 296 是空行（正文在 297）
+      · `协作协议.md` 说「三级阶梯在 做法.md:21」，实际在 22
+      · `GLOSSARY.md` 说「协作协议 第 5 节」，目标是「## 五、」——**阿拉伯对中文**。
+        这一条正是当天两轮假警的根源，所以它必须在「不该报」那一半里。
+    """
+    import doc_lint as dl
+    d = Path(tempfile.mkdtemp())
+    docs = d / 'docs'
+    docs.mkdir()
+    (docs / '做法.md').write_text(
+        '# 做法\n\n第一行正文\n\n## 二、硬隔离的三级阶梯\n\n第三节正文\n', encoding='utf-8')
+    (docs / '协作协议.md').write_text(
+        '# 协议\n\n## 五、GQ 答复表\n\n表内容\n', encoding='utf-8')
+    (docs / '引.md').write_text(
+        '# 引\n\n'
+        '- 空行指针：`做法.md:4`\n'
+        '- 越界：`做法.md:999`\n'
+        '- 节号对不上：`协作协议.md` 第 99 节\n'
+        '- 节号对得上（阿拉伯对中文，不该报）：`协作协议.md` 第 5 节\n'
+        '- 剧库同名文件（不该报）：`06_治理/协作协议.md:1`\n'
+        '- 占位符带节号（不该报）：`docs/工序-*.md` 第 3 节\n'
+        '- 正常指针（不该报）：`做法.md:7`\n', encoding='utf-8')
+
+    old = dl.DOCS, dl.ROOT
+    dl.DOCS, dl.ROOT = docs, d
+    try:
+        # ① 行号指针
+        res = dl.check_line_ptrs()
+        msgs = [m for _, m in res]
+        check('doclint/空行行号报 WARN', any('做法.md:4' in m and '空行' in m for m in msgs), res)
+        check('doclint/越界行号报 WARN', any('做法.md:999' in m and '越界' in m for m in msgs), res)
+        check('doclint/正常行号不报', not any('做法.md:7' in m for m in msgs), res)
+        check('doclint/剧库同名文件不报', not any('06_治理' in m for m in msgs), res)
+
+        # ② 节号引用
+        res = dl.check_section_refs()
+        msgs = [m for _, m in res]
+        check('doclint/节号不存在报 WARN', any('第 99 节' in m for m in msgs), res)
+        check('doclint/阿拉伯数字对中文节号不报（当天两轮假警的根源）',
+              not any('第 5 节' in m for m in msgs), res)
+        check('doclint/占位符不报', not any('工序-*' in m for m in msgs), res)
+
+        # ③ 段落重复：该报的报，标题相同内容不同不报
+        same = ('甲行内容足够长，用来触发段落重复判定，四十个字符以上\n'
+                '乙行内容足够长，用来触发段落重复判定，四十个字符以上\n'
+                '丙行内容足够长，用来触发段落重复判定，四十个字符以上\n'
+                '丁行内容足够长，用来触发段落重复判定，四十个字符以上\n')
+        (docs / '甲.md').write_text('# 甲\n\n## 硬约束\n\n' + same, encoding='utf-8')
+        (docs / '乙.md').write_text('# 乙\n\n## 硬约束\n\n' + same, encoding='utf-8')
+        res = dl.check_dup_blocks()
+        check('doclint/段落重复报 WARN',
+              any('甲.md' in m and '乙.md' in m for _, m in res), res)
+
+        (docs / '乙.md').write_text(
+            '# 乙\n\n## 硬约束\n\n这里是完全不同的内容，只是标题撞了\n', encoding='utf-8')
+        res = dl.check_dup_blocks()
+        check('doclint/标题相同但内容不同不报（当天误判过的形态）',
+              not any('甲.md' in m for _, m in res), res)
+    finally:
+        dl.DOCS, dl.ROOT = old
+
+
+def t_doclint_counts():
+    """doc_lint 件数闸：文档写的「N 份工序文档 / N 份字幕技能」要和磁盘对得上（2026-11-10 加）。
+
+    正例取自当天实况：台账写「盘 14 份工序文档」，而 `ls docs/工序-*` 是 17 份，
+    为了核这个口径白跑了一轮对话。
+    """
+    import doc_lint as dl
+    d = Path(tempfile.mkdtemp())
+    docs = d / 'docs'
+    docs.mkdir()
+    (docs / '工序-甲.md').write_text('# 甲\n', encoding='utf-8')
+    (docs / '工序-乙.md').write_text('# 乙\n', encoding='utf-8')
+    (d / 'skills' / 'subtitle-x').mkdir(parents=True)
+    (docs / '待办台账.md').write_text('# 台账\n\n- 盘 3 份工序文档\n', encoding='utf-8')
+    (d / 'README.md').write_text('# 读我\n\n- 2 份工序文档\n', encoding='utf-8')
+
+    old = dl.DOCS, dl.ROOT
+    dl.DOCS, dl.ROOT = docs, d
+    try:
+        res = dl.check_count_claims()
+        check('doclint/台账件数与实盘不符报 WARN',
+              any('待办台账' in m and '3 份' in m for _, m in res), res)
+        check('doclint/对得上的 README 不报',
+              not any('README' in m for _, m in res), res)
+        (docs / '文档落点表.md').write_text('# 落点\n\n- 2 份字幕技能\n', encoding='utf-8')
+        res = dl.check_count_claims()
+        check('doclint/技能件数与实盘不符报 WARN',
+              any('字幕技能' in m for _, m in res), res)
+    finally:
+        dl.DOCS, dl.ROOT = old
+
+
 def main():
     global VERBOSE
     ap = argparse.ArgumentParser()
@@ -1764,6 +1862,8 @@ def main():
     t_skill_links()
     t_handoff_fresh()
     t_doclint_backref()
+    t_doclint_refs()
+    t_doclint_counts()
     t_ass_rows()
     t_check_rules()
     t_cross_lib()

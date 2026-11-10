@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# 最近修改：2026-11-10T1840（台账分节降维：等协作方+等外部并「等回音」，#56 反向分支判节跟改）
+# 最近修改：2026-11-10T2030（加引用有效性三件：行号指针 / 节号引用 / 段落重复，#51 盘文档实证）
 """doc_lint.py -- 文档体检：把「文档该怎么写」从陈述句改成可机检的断言
 
 为什么有它：文档乱掉的共因只有三条——规矩写在被管的文件里、超限没有出口、
@@ -35,7 +35,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = '2026-11-10T1840'
+VERSION = '2026-11-10T2030'
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / 'docs'
@@ -534,6 +534,181 @@ def check_refs() -> list:
 
 
 
+# ---- 引用有效性三件（2026-11-10 加，#51 盘文档时实证） ----
+LINE_PTR = re.compile(r'`([^`\n]+?\.(?:md|tsv))[:：]\s*(\d+)`')
+SEC_REF = re.compile(r'`([^`\n]+?\.md)`[^。；\n]{0,4}?第\s*([0-9一二三四五六七八九十]+)\s*节')
+_CN_NUM = {'一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10}
+
+
+def _sec_num(s):
+    if s.isdigit():
+        return int(s)
+    if s in _CN_NUM:
+        return _CN_NUM[s]
+    if s.startswith('十'):
+        return 10 + _CN_NUM.get(s[1:], 0)
+    if '十' in s:
+        a, b = s.split('十')
+        return _CN_NUM.get(a, 0) * 10 + _CN_NUM.get(b, 0)
+    return None
+
+
+def _resolve_md(ref, from_path):
+    """把一条引用解析成本库里的实际文件；解析不出来返回 None（不报）。
+
+    `check_refs` 只管带 `/` 的路径，纯文件名它故意放行（含糊）。这里只用于
+    「带行号 / 带节号」的引用——那两种写法意图明确，含糊度低，值得多查一步。
+    """
+    if ' ' in ref or re.search(r'xxx|YYYY|<\w+>|\*', ref, re.I):
+        return None
+    if '/' in ref:
+        first = ref.split('/')[0]
+        if first in ('docs', 'tools', 'examples', 'skills'):
+            cand = ROOT / ref
+            return cand if cand.is_file() else None
+        return None                      # 别的前缀 = 隔壁库 / 剧库，本库管不着
+    for cand in (DOCS / ref, from_path.parent / ref):
+        if cand.is_file():
+            return cand
+    return None
+
+
+def check_line_ptrs() -> list:
+    """跨文件行号指针（`x.md:123`）指到的行，还在不在正文里。
+
+    2026-11-10 加（#51）：一天撞到两处——`工序-审稿.md` 的「实测见手册 :296」
+    实际是空行、`协作协议.md` 的「三级阶梯在 做法.md:21」实际在 :22。
+    这类指针改一次文档就漂一次，漂了没人报错，读者只会翻空页。
+    **只认反引号内带文件名的写法**：句中只剩 `:296`（没写文件名）的机器认不出来。
+    """
+    out = []
+    for p in walk_md():
+        if any(x in p.parts for x in ('archive', '_存档', '归档')):
+            continue
+        for i, ln in enumerate(read(p), 1):
+            for m in LINE_PTR.finditer(ln):
+                ref, num = m.group(1).strip(), int(m.group(2))
+                tgt = _resolve_md(ref, p)
+                if tgt is None:
+                    continue
+                lines = read(tgt)
+                where = f'{p.relative_to(ROOT).as_posix()} L{i}'
+                tname = tgt.relative_to(ROOT).as_posix()
+                if num < 1 or num > len(lines):
+                    out.append(('WARN', f'{where} 引用的 {tname}:{num} 越界（该文件 {len(lines)} 行）'))
+                elif not lines[num - 1].strip():
+                    out.append(('WARN', f'{where} 引用的 {tname}:{num} 是空行——行号漂了，'
+                                        f'建议改成按节名指，别再写行号'))
+    return out
+
+
+def check_section_refs() -> list:
+    """「见 `x.md` 第 N 节」——那个文件到底有没有第 N 节。
+
+    2026-11-10 加（#51）：`GLOSSARY.md` 说 GQ 编号在「协作协议 第 5 节」，
+    目标是「## 五、GQ 答复表」——阿拉伯数字对中文节号，人读得懂，机器要转才认。
+    同批还抓到清稿手册指向「审稿-判据 第二节」，而那一节讲的是「不报的十二类」。
+    **只判节在不在，判不了那节内容对不对**——后者要读懂两头，留给人工。
+    """
+    out = []
+    for p in walk_md():
+        if any(x in p.parts for x in ('archive', '_存档', '归档')):
+            continue
+        for i, ln in enumerate(read(p), 1):
+            for m in SEC_REF.finditer(ln):
+                ref, raw = m.group(1).strip(), m.group(2)
+                tgt = _resolve_md(ref, p)
+                if tgt is None:
+                    continue
+                n = _sec_num(raw)
+                if n is None:
+                    continue
+                forms = {raw, str(n)}
+                if 1 <= n <= 10:
+                    forms.add('一二三四五六七八九十'[n - 1])
+                pats = [re.compile(r'^#{1,4}\s*(?:第\s*)?' + re.escape(f) + r'[、.．节:：\s]')
+                        for f in forms]
+                if not any(pat.match(t) for t in read(tgt) for pat in pats):
+                    out.append(('WARN', f'{p.relative_to(ROOT).as_posix()} L{i} 说「{ref} 第 {raw} 节」，'
+                                        f'但那个文件里没有这一节'))
+    return out
+
+
+DUP_BLOCK = 4          # 连续几行一字不差才算重复
+DUP_MIN_CHARS = 40     # 太短的块不判（标题、单句、表格骨架）
+
+
+def check_dup_blocks() -> list:
+    """段落级重复：同一段文字（连续 4 行）出现在两处。
+
+    2026-11-10 加（#51）：审稿手册曾把三份技能 references 原样拼成一份，
+    同一段脚本对照表的说明出现三次——拼装是这类重复的唯一来源，而它改一处准漏两处。
+
+    **只查段落，不查标题**：标题相同不等于内容相同。同一天就误判过一次——
+    三套「硬约束」标题一样，内容分别是切片 / 判读 / 品控三阶段的规矩，一组都不该合。
+    只扫 `docs/`（骨架 `examples/新库骨架/` 与真身同名文件的重复是模板复制，天然不在范围内）。
+    """
+    out = []
+    seen = {}
+    for p in sorted(DOCS.rglob('*.md')):
+        if any(x in p.parts for x in ('archive', '_存档', '归档')):
+            continue
+        lines = read(p)
+        for i in range(len(lines) - DUP_BLOCK + 1):
+            win = [w.strip() for w in lines[i:i + DUP_BLOCK]]
+            if any(not w for w in win):
+                continue
+            if all(set(w) <= set('|-: ') for w in win):
+                continue
+            key = '\n'.join(win)
+            if len(key) < DUP_MIN_CHARS:
+                continue
+            seen.setdefault(key, []).append((p, i + 1))
+    for key, locs in seen.items():
+        uniq = []
+        for p, ln in locs:                       # 滑动窗口会自我重叠，只留不重叠的起点
+            if uniq and uniq[-1][0] == p and ln - uniq[-1][1] < DUP_BLOCK:
+                continue
+            uniq.append((p, ln))
+        if len(uniq) > 1:
+            spots = '、'.join(f'{p.relative_to(ROOT).as_posix()}:{ln}' for p, ln in uniq)
+            out.append(('WARN', f'同一段文字出现 {len(uniq)} 次（{spots}）：'
+                                f'{key.splitlines()[0][:30]}…'))
+    return out
+
+
+def check_count_claims() -> list:
+    """文档里写的「N 份工序文档 / N 份字幕技能」和磁盘对不对得上。
+
+    2026-11-10 加（#51）：台账写「盘 14 份工序文档」，`ls docs/工序-*` 实际 17 份，
+    同一天为了核这个口径白跑了一轮。`check_counts` 只管「NN 件工具」，文档里别的计数没人跟。
+
+    **只查三个「读者会当准数」的文件**（台账 / 落点表 / README）。判定记录和归档不查——
+    账本记的是当时的事实，旧卷里的 14 在写那一刻真是 14。
+    说法也只认明确的那两种（「N 份工序文档」「N 份字幕技能」），「N 份文档」太泛，不碰。
+    """
+    out = []
+    actual = {
+        '工序文档': len(list(DOCS.glob('工序-*.md'))),
+        '字幕技能': len([p for p in (ROOT / 'skills').glob('subtitle-*') if p.is_dir()]),
+    }
+    pats = {
+        '工序文档': re.compile(r'(\d+)\s*份工序文档'),
+        '字幕技能': re.compile(r'(\d+)\s*[份个]\s*字幕技能'),
+    }
+    for p in (DOCS / '待办台账.md', DOCS / '文档落点表.md', ROOT / 'README.md'):
+        if not p.is_file():
+            continue
+        for i, ln in enumerate(read(p), 1):
+            for kind, pat in pats.items():
+                for m in pat.finditer(ln):
+                    n = int(m.group(1))
+                    if n != actual[kind]:
+                        out.append(('WARN', f'{p.relative_to(ROOT).as_posix()} L{i} 写「{n} 份{kind}」，'
+                                            f'实际 {actual[kind]} 份——写死的数字会漂，改成不带数或指向实盘'))
+    return out
+
+
 MEMORY_LIMIT = 3000     # 自动注入层的字符上限（2026-11-08）
 LOG_LIMIT = 20000       # 单日日志字节上限（2026-11-08）
 
@@ -842,6 +1017,10 @@ def main() -> int:
 
     issues += check_long_lines()
     issues += check_refs()
+    issues += check_line_ptrs()
+    issues += check_section_refs()
+    issues += check_dup_blocks()
+    issues += check_count_claims()
     issues += check_counts()
     issues += check_glossary_state()
     issues += check_progress_head()
